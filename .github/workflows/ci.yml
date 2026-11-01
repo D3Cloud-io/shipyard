@@ -78,7 +78,7 @@ jobs:
   # against this commit's server on a migrated database with a throwaway admin — manifest, native
   # sign-in, me, refresh rotation and reuse, revoke, and throttling (destructive, on that account).
   #
-  # The suite's image is public, as matdemers1/d3-app-contract is, so it is pulled with no token.
+  # The suite's image is public, as D3Cloud-io/d3-app-contract is, so it is pulled with no token.
   # `contract-suite` checks first that it can be: when it cannot, this job is skipped — never
   # green having run nothing — and that job's summary carries the reason (CON-T-002).
   conformance:
@@ -121,7 +121,7 @@ jobs:
       - name: The d3-app-contract suite
         run: |
           ARGS="$RUNNER_TEMP/conformance.json"
-          docker run --rm --network host -v "$PWD:/out" ghcr.io/matdemers1/d3-app-conformance:contract-1 \
+          docker run --rm --network host -v "$PWD:/out" ghcr.io/d3cloud-io/d3-app-conformance:contract-1 \
             --base "$(jq -r .base "$ARGS")" --allow-http --product shipyard \
             --email "$(jq -r .email "$ARGS")" --password "$(jq -r .password "$ARGS")" \
             --totp-secret "$(jq -r .totpSecret "$ARGS")" --main-is-last-owner \
@@ -148,7 +148,7 @@ jobs:
       - name: Can the suite's image be pulled anonymously?
         id: probe
         env:
-          IMAGE: ghcr.io/matdemers1/d3-app-conformance:contract-1
+          IMAGE: ghcr.io/d3cloud-io/d3-app-conformance:contract-1
         run: |
           if out="$(docker manifest inspect "$IMAGE" 2>&1)"; then
             echo "available=true" >> "$GITHUB_OUTPUT"
@@ -168,7 +168,7 @@ jobs:
             printf '%s\n' "$out"
             echo '```'
             echo
-            echo "The package must be public: https://github.com/users/matdemers1/packages/container/d3-app-conformance/settings"
+            echo "The package must be public: https://github.com/orgs/D3Cloud-io/packages/container/d3-app-conformance/settings"
           } >> "$GITHUB_STEP_SUMMARY"
 
   e2e:
@@ -273,10 +273,15 @@ jobs:
       - id: shipyard-labels
         name: Compute Shipyard labels from the HEAD commit's trailer
         run: bash scripts/shipyard-labels.sh | tee -a "$GITHUB_OUTPUT"
+      # Image names must be lowercase and the owner is not (D3Cloud-io, GL-006): ghcr.io/d3cloud-io/shipyard/<app>.
+      # Images from before the move stay at ghcr.io/matdemers1/shipyard (GitHub doesn't move packages).
+      - id: image
+        name: Lowercase the image name
+        run: echo "name=ghcr.io/${GITHUB_REPOSITORY,,}/${{ matrix.app }}" >> "$GITHUB_OUTPUT"
       - id: meta
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
         with:
-          images: ghcr.io/${{ github.repository }}/${{ matrix.app }}
+          images: ${{ steps.image.outputs.name }}
           tags: type=sha,format=long
           labels: |
             dev.d3cloud.shipyard.migration=${{ steps.shipyard-labels.outputs.migration }}
@@ -321,7 +326,7 @@ jobs:
       - name: Verify the published labels
         run: |
           set -euo pipefail
-          image="ghcr.io/${{ github.repository }}/${{ matrix.app }}:sha-${{ github.sha }}"
+          image="${{ steps.image.outputs.name }}:sha-${{ github.sha }}"
           labels="$(docker buildx imagetools inspect "$image" --format '{{json .Image}}' | jq '.config.Labels')"
           echo "$labels" | jq -e --arg v "${{ github.sha }}" '.["org.opencontainers.image.revision"] == $v' > /dev/null
           echo "$labels" | jq -e --arg v "${{ steps.shipyard-labels.outputs.migration }}" '.["dev.d3cloud.shipyard.migration"] == $v' > /dev/null

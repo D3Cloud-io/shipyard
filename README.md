@@ -70,7 +70,7 @@ with `https://` (`apps/server/src/auth/cookies.ts`), so a local, tunnel-free try
 `PUBLIC_URL=http://localhost:3466` (or whatever port you publish) — not `https://` — or the
 browser will never send the cookie back over plain HTTP.
 
-Pick a published image tag, `ghcr.io/matdemers1/shipyard/{server,agent}:sha-<40hex>` (see the
+Pick a published image tag, `ghcr.io/d3cloud-io/shipyard/{server,agent}:sha-<40hex>` (see the
 Actions tab or GHCR package pages for the newest one on `main`), then set it into
 `docker-compose.yml` in place. The compose file pins **literal** tags on purpose, not `${...}`
 interpolation — some host dashboards (ZimaOS among them) refuse a compose file that interpolates,

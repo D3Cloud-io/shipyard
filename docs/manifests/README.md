@@ -10,7 +10,7 @@ Onboarding (a deliberate host act, SHP-D-059): the demo's compose file stopped b
 and names `ghcr.io/matdemers1/d3-auth/demo`, published by d3-auth's CI from main (AUTH-T-001). The
 original file is kept beside it as `docker-compose.yml.pre-shipyard`.
 
-Run from the published agent image, `ghcr.io/matdemers1/shipyard/agent:sha-d7ecdba9433e748f43b5a9dc0e6cb2dd997e41c4`:
+Run from the published agent image, `ghcr.io/d3cloud-io/shipyard/agent:sha-d7ecdba9433e748f43b5a9dc0e6cb2dd997e41c4`:
 
 | Request | Result |
 |---|---|

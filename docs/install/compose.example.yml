@@ -1,7 +1,7 @@
 # Shipyard — a complete, tunnel-free example for a stranger's first install.
 #
 # Replace every `sha-<40hex>` below with a literal 40-hex commit SHA from a published image —
-# `ghcr.io/matdemers1/shipyard/server:sha-<40hex>` and `.../agent:sha-<40hex>` are built from the
+# `ghcr.io/d3cloud-io/shipyard/server:sha-<40hex>` and `.../agent:sha-<40hex>` are built from the
 # same commit on `main` by CI (see the repo's Actions tab or its GHCR package pages for the newest
 # tag). Never a floating tag: a deploy through Shipyard itself always pins to one, and the first
 # install should too.
@@ -32,7 +32,7 @@ services:
 
   server:
     # Replace sha-<40hex> with a real, published tag before running this.
-    image: ghcr.io/matdemers1/shipyard/server:sha-<40hex>
+    image: ghcr.io/d3cloud-io/shipyard/server:sha-<40hex>
     env_file: server.env
     depends_on:
       postgres:
@@ -47,7 +47,7 @@ services:
 
   agent:
     # Replace sha-<40hex> with a real, published tag before running this.
-    image: ghcr.io/matdemers1/shipyard/agent:sha-<40hex>
+    image: ghcr.io/d3cloud-io/shipyard/agent:sha-<40hex>
     env_file: agent.env
     # No ports, ever: the agent only ever long-polls the server, signed. It touches the Docker
     # socket instead — root-equivalent access, used only to run manifest-defined argv steps.

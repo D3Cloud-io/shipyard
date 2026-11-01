@@ -15,7 +15,7 @@ compose:
   project: shipyard
 services:
   server:
-    image: ghcr.io/matdemers1/shipyard/server
+    image: ghcr.io/d3cloud-io/shipyard/server
 # The server's /api/health answers {status: 'ok', schemaRevision} (the Prisma migration it is on),
 # which is what the engine's check requires; the image's schema label supplies the expected value.
 health:

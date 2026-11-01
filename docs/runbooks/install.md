@@ -33,7 +33,7 @@ No shell here has `openssl`? `head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n
 ## 2. Compose file
 
 `docker-compose.yml` with four services — `postgres:16`, `server`, `agent`, and (optionally)
-`cloudflared` — and **literal** image tags `ghcr.io/matdemers1/shipyard/{server,agent}:sha-<40hex>`.
+`cloudflared` — and **literal** image tags `ghcr.io/d3cloud-io/shipyard/{server,agent}:sha-<40hex>`.
 The server mounts `/DATA/shipyard/backups:/backups` (its nightly dumps; `BACKUP_DIR=/backups`).
 The agent:
 

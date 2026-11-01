@@ -36,7 +36,7 @@ not yet recovered — run `docker compose -p shipyard run --rm --no-deps --entry
 On the host:
 
 ```bash
-docker pull ghcr.io/matdemers1/shipyard/agent:sha-<new 40hex>
+docker pull ghcr.io/d3cloud-io/shipyard/agent:sha-<new 40hex>
 ```
 
 Confirm it is the SHA you intend — check the release notes or the commit you want, and that CI
@@ -49,7 +49,7 @@ In `/DATA/shipyard/docker-compose.yml`, change the agent service's literal image
 ```yaml
 services:
   agent:
-    image: ghcr.io/matdemers1/shipyard/agent:sha-<new 40hex>
+    image: ghcr.io/d3cloud-io/shipyard/agent:sha-<new 40hex>
 ```
 
 No `${…}` and no `:latest` — literal tags only (install.md §2). Do not touch `server`'s image line
