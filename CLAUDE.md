@@ -58,7 +58,7 @@ or Operated; logs work for any container and are redacted on the host and never 
 
 - Node 22, pnpm 10 (supply-chain policy in `pnpm-workspace.yaml`), TypeScript, Vitest, Playwright.
 - CI on **GitHub-hosted runners only** — this repo is public; never the Zima's self-hosted runner.
-- Images `ghcr.io/matdemers1/shipyard/{server,agent}:sha-<40hex>` from `main` only, with OCI labels.
+- Images `ghcr.io/d3cloud-io/shipyard/{server,agent}:sha-<40hex>` from `main` only, with OCI labels.
 - Compose operations go through the pinned `docker compose` v5 CLI with explicit `-f` and `-p`;
   dockerode is for inspect/network/events only.
 - Every refusal is `{ code, gate, message, fix }`.
@@ -82,7 +82,7 @@ Workspace packages: `@shipyard/schema`, `@shipyard/sequence`, `shipyard-server`,
 
 ## The native app contract (SHP-P-10)
 
-D3 Constellation reaches Shipyard through the D3 App contract (`matdemers1/d3-app-contract`, CON-ADR-003).
+D3 Constellation reaches Shipyard through the D3 App contract (`D3Cloud-io/d3-app-contract`, CON-ADR-003).
 
 - `GET /.well-known/d3-app.json` (`src/routes/wellknown.ts`) — endpoints on `PUBLIC_URL`; `d3auth` and `link` only while Sign in with D3 Auth is configured.
 - `/api/auth/native/{signin,refresh,revoke,link}` (in `src/auth/index.ts`, sharing the password sign-in's throttles and TOTP replay guard) and `src/auth/native-sessions.ts`. **A native session is a `session` row** with `native = true` and a device name; its Bearer access token is the row's `token_hash`, fifteen minutes, never slid; refresh rotates through `native_refresh`, and a replayed token ends the session. A cookie only resolves a browser row and a Bearer token only a native one.

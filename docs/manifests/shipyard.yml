@@ -7,7 +7,7 @@
 # A broken server release is rolled back by the agent alone, with the server unreachable
 # (SHP-REQ-072, SHP-D-081); proven in e2e/tests/selfdeploy.test.ts.
 name: shipyard
-repo: matdemers1/shipyard
+repo: D3Cloud-io/shipyard
 workflow: ci.yml
 compose:
   files:

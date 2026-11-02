@@ -51,10 +51,10 @@ describe('docs/manifests/shipyard.yml', () => {
     const manifest = parseManifestYaml(await readFile(resolve(REPO_ROOT, 'docs/manifests/shipyard.yml'), 'utf8'));
     expect(manifest).toMatchObject({
       name: 'shipyard',
-      repo: 'matdemers1/shipyard',
+      repo: 'D3Cloud-io/shipyard',
       workflow: 'ci.yml',
       compose: { files: ['/DATA/shipyard/docker-compose.yml'], project: 'shipyard' },
-      services: { server: { image: 'ghcr.io/matdemers1/shipyard/server' } },
+      services: { server: { image: 'ghcr.io/d3cloud-io/shipyard/server' } },
       health: { service: 'server', port: 3300, path: '/api/health' },
       soakSeconds: 120,
       steps: { migrate: { service: 'server', argv: ['node', 'node_modules/prisma/build/index.js', 'migrate', 'deploy'] } },

@@ -48,7 +48,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
 
 ARG REVISION=unknown
 LABEL org.opencontainers.image.revision=$REVISION \
-      org.opencontainers.image.source=https://github.com/matdemers1/shipyard \
+      org.opencontainers.image.source=https://github.com/D3Cloud-io/shipyard \
       org.opencontainers.image.licenses=Apache-2.0
 
 ENV SHIPYARD_VERSION=$REVISION \

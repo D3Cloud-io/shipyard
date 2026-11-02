@@ -121,7 +121,7 @@ jobs:
       - name: The d3-app-contract suite
         run: |
           ARGS="$RUNNER_TEMP/conformance.json"
-          docker run --rm --network host -v "$PWD:/out" ghcr.io/d3cloud-io/d3-app-conformance:contract-1 \
+          docker run --rm --user "$(id -u)" --network host -v "$PWD:/out" ghcr.io/d3cloud-io/d3-app-conformance:contract-1 \
             --base "$(jq -r .base "$ARGS")" --allow-http --product shipyard \
             --email "$(jq -r .email "$ARGS")" --password "$(jq -r .password "$ARGS")" \
             --totp-secret "$(jq -r .totpSecret "$ARGS")" --main-is-last-owner \

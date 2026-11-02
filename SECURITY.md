@@ -5,7 +5,7 @@ acts — a hole here can mean arbitrary command execution on a host. Please repo
 
 ## Reporting a vulnerability
 
-Use [GitHub Security Advisories](https://github.com/matdemers1/shipyard/security/advisories/new)
+Use [GitHub Security Advisories](https://github.com/D3Cloud-io/shipyard/security/advisories/new)
 to report a vulnerability privately. Do not open a public issue for a suspected security problem.
 
 Include:
