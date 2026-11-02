@@ -46,13 +46,13 @@ if ! command -v docker >/dev/null 2>&1; then
   exit 1
 fi
 
-server_image="ghcr.io/matdemers1/shipyard/server:${image_tag}"
+server_image="ghcr.io/d3cloud-io/shipyard/server:${image_tag}"
 
 if ! docker manifest inspect "$server_image" >/dev/null 2>&1; then
   if [ "$image_tag" != "$fallback_tag" ]; then
     log "image tag '$image_tag' not found on GHCR; falling back to '$fallback_tag'"
     image_tag="$fallback_tag"
-    server_image="ghcr.io/matdemers1/shipyard/server:${image_tag}"
+    server_image="ghcr.io/d3cloud-io/shipyard/server:${image_tag}"
   fi
   if ! docker manifest inspect "$server_image" >/dev/null 2>&1; then
     echo "clean-install-check.sh: neither the requested tag nor the fallback ($fallback_tag) exists on GHCR" >&2
