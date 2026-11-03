@@ -28,9 +28,12 @@
     gap: var(--space-12);
     min-width: 0;
   }
-  .shp-ov-incident {
+  /* The danger tint and border the design gives a banner: run 1 went straight to "the big red one". */
+  .shp-ov-incidents .shp-ov-incident {
     min-width: 0;
     overflow-wrap: anywhere;
+    background: var(--color-danger-muted);
+    border: var(--border-width) solid var(--color-danger);
   }
   .shp-ov-incident__lines {
     margin: 0;
@@ -72,6 +75,14 @@
   }
   .shp-ov-action:hover {
     background: var(--color-surface-hover);
+  }
+  .shp-ov-action--primary {
+    border-color: var(--color-accent);
+    background: var(--color-accent);
+    color: var(--color-accent-contrast);
+  }
+  .shp-ov-action--primary:hover {
+    background: var(--color-accent-hover);
   }
   .shp-ov-action:focus-visible {
     outline: var(--focus-width) solid var(--color-focus);

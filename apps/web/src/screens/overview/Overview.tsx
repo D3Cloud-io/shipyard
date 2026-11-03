@@ -116,11 +116,6 @@ export function Overview() {
           </EmptyState>
         ) : null}
 
-        {o !== null && !noAgent ? (
-          <Section title="What runs" surface="plain">
-            <RunsStats runs={o.runs} tiles={o.apps} />
-          </Section>
-        ) : null}
 
         {o !== null && home.status === 'ready' ? (
           needsYou.count > 0 ? (
@@ -147,6 +142,12 @@ export function Overview() {
           ) : (
             <p className="shp-ov-quiet">Nothing needs you.</p>
           )
+        ) : null}
+
+        {o !== null && !noAgent ? (
+          <Section title="What runs" surface="plain">
+            <RunsStats runs={o.runs} tiles={o.apps} />
+          </Section>
         ) : null}
 
         {o !== null ? (

@@ -40,7 +40,7 @@ export function IncidentBanners({ incidents, now, announced }: { incidents: read
             actions={
               <span className="shp-ov-incident__actions">
                 {first === undefined ? null : (
-                  <Link asChild className="shp-ov-action">
+                  <Link asChild className="shp-ov-action shp-ov-action--primary">
                     <RouterLink to={containerHref(first.id)}>{`Open ${first.name}`}</RouterLink>
                   </Link>
                 )}
