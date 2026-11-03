@@ -21,6 +21,7 @@ const EXPECTED_TOOLS = [
   'shipyard_deploy_status',
   'shipyard_dry_run',
   'shipyard_host',
+  'shipyard_incident',
   'shipyard_logs',
   'shipyard_maintenance_status',
   'shipyard_prune',
@@ -47,7 +48,7 @@ afterEach(async () => {
 });
 
 describe('MCP tool descriptions (SHP-REQ-165)', () => {
-  it('keeps the fifteen tool names, which connected sessions depend on', async () => {
+  it('keeps the sixteen tool names, which connected sessions depend on', async () => {
     const tools = await listTools();
     expect(tools.map((t) => t.name).sort()).toEqual(EXPECTED_TOOLS);
   });
@@ -83,6 +84,7 @@ describe('MCP tool descriptions (SHP-REQ-165)', () => {
     expect(byName.get('shipyard_action')).toMatch(/Stop is console-only/);
     expect(byName.get('shipyard_action')).toMatch(/Observed containers can't be acted on/);
     expect(byName.get('shipyard_logs')).toMatch(/redacted on the host/);
+    expect(byName.get('shipyard_incident')).toMatch(/never stored/);
     // Stack updates speak the console's words (SHP-REQ-199): Operated, by digest, Needs you.
     expect(byName.get('shipyard_stack_update')).toMatch(/adopted Operated stack/);
     expect(byName.get('shipyard_stack_update')).toMatch(/Needs you/);

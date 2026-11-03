@@ -20,7 +20,11 @@ hand is drift, and Shipyard refuses the next one until someone resolves it.
   service of it, and wait for the result; stop is console-only, and Observed containers can't be acted
   on) · `shipyard_logs` (a redacted tail of one container, up to 500 lines; the token must be issued
   with logs allowed, and reads only containers of the apps and adopted stacks it is scoped to, never
-  Observed ones) · `shipyard_stack_update` (update an adopted Operated stack, by digest, to the
+  Observed ones) · `shipyard_incident` (one container's incident bundle, by name or full ID: what
+  Shipyard sees in time order, its redacted logs since the first error, its inspect state without
+  environment, and its app's last deploy or its stack's last update; same token and scope rule as
+  `shipyard_logs`; built on request, never stored; a client connected before this tool existed must
+  reconnect to see it) · `shipyard_stack_update` (update an adopted Operated stack, by digest, to the
   newest images its track resolves to; a token's update waits for a deployer to approve it in the
   console's Needs you, so do not poll for it; image-only rollback if it fails) ·
   `shipyard_stack_update_status` (the update, its digests and the images before and after) ·

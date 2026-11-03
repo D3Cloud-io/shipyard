@@ -68,6 +68,7 @@ export const TOOLS: readonly { name: string; does: string }[] = [
   { name: 'shipyard_host', does: 'Everything running on the host — every container with its tier, and the volumes, images and disk. Changes nothing.' },
   { name: 'shipyard_action', does: 'Restarts, recreates or starts a Deployed app or an adopted stack, or one service of it. Stop is console-only.' },
   { name: 'shipyard_logs', does: 'A redacted tail of a container’s logs, for the apps and stacks the token is scoped to and allowed to read logs for.' },
+  { name: 'shipyard_incident', does: 'One container’s incident bundle — facts, redacted logs since the first error, inspect state, last change — for the apps and stacks the token is scoped to and allowed to read logs for; never stored.' },
   { name: 'shipyard_stack_update', does: 'Asks to update an adopted, Operated stack to the newest images its track resolves to; a deployer approves it in the console’s Needs you first.' },
   { name: 'shipyard_stack_update_status', does: 'Follows a stack update — awaiting approval, running, succeeded, rolled back or refused — with the images before and after.' },
   { name: 'shipyard_volume_backup', does: 'Backs up a named volume of a Deployed app or an Operated stack the token is scoped to. Restoring or deleting a volume is console-only.' },
