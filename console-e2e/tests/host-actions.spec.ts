@@ -56,6 +56,12 @@ async function fakeAction(page: Page, polled: Record<string, unknown>): Promise<
   await page.route(isPath(`/api/actions/${FAKE_ACTION}`), (route) => json(route, 200, polled));
 }
 
+/** Restart asks first (SHP-REQ-210): press it, then confirm in the dialog that names the container. */
+async function confirmRestart(page: Page, sheet: Locator): Promise<void> {
+  await sheet.getByRole('button', { name: 'Restart', exact: true }).click();
+  await page.getByRole('dialog', { name: `Restart ${WORKER}?` }).getByRole('button', { name: 'Restart', exact: true }).click();
+}
+
 async function openSheet(page: Page, name = WORKER): Promise<Locator> {
   await page.goto(`/host?container=${containerId(name)}`);
   // The sheet opens straight from the URL and makes the page behind it inert, so the heading may
@@ -141,7 +147,7 @@ for (const width of ['desktop', 'phone'] as const satisfies readonly Width[]) {
         await fakeAction(page, actionStatus({ state: 'succeeded', startedAt, endedAt: new Date(Date.parse(startedAt) + 8_000).toISOString(), output: 'Container bindery-worker-1  Restarted' }));
         await forceTheme(page, theme);
         const sheet = await openSheet(page);
-        await sheet.getByRole('button', { name: 'Restart', exact: true }).click();
+        await confirmRestart(page, sheet);
         await expect(sheet.getByText('Restarted worker in 8s')).toBeVisible();
         await logsSettled(sheet);
         await expectClean(page, `Action result (${theme}, ${width})`, width);
@@ -176,7 +182,8 @@ test.describe('at 1440 px', () => {
     // The harness world has no agent polling the server, so the server refuses at once rather than
     // queueing work nobody would take (SHP-T-15.4); the sheet shows its message and fix as sent.
     const sheet = await openSheet(page);
-    await sheet.getByRole('button', { name: 'Restart', exact: true }).click();
+    await confirmRestart(page, sheet);
+    await expect(sheet.getByText('The restart did not go through')).toBeVisible();
     await expect(sheet.getByText('The agent that runs this has not polled the server recently.').first()).toBeVisible();
     await expect(sheet.getByText('Check the agent is running and can reach the server, then retry.').first()).toBeVisible();
     for (const name of ['Restart', 'Recreate']) await expect(sheet.getByRole('button', { name, exact: true })).toBeEnabled();
