@@ -107,7 +107,7 @@ async function seedStack(name: string): Promise<string> {
 
 async function seedDeploy(
   appId: string,
-  state: 'queued' | 'succeeded' | 'failed' | 'rolled_back' | 'pulling',
+  state: 'queued' | 'succeeded' | 'failed' | 'rolled_back' | 'pulling' | 'refused' | 'cancelled' | 'awaiting_approval',
   opts: { sha?: string; dryRun?: boolean; endedAt?: Date | null; createdAt?: Date } = {},
 ): Promise<string> {
   const deploy = await db.deploy.create({
@@ -118,7 +118,7 @@ async function seedDeploy(
       deployId: deploy.id,
       appId,
       state,
-      endedAt: opts.endedAt === undefined ? (state === 'queued' || state === 'pulling' ? null : new Date()) : opts.endedAt,
+      endedAt: opts.endedAt === undefined ? (state === 'queued' || state === 'pulling' || state === 'awaiting_approval' ? null : new Date()) : opts.endedAt,
       ...(opts.createdAt ? { createdAt: opts.createdAt } : {}),
     },
   });
@@ -277,6 +277,10 @@ describe('tiles, chips and totals (SHP-REQ-207)', () => {
     await seedDeploy(alphaId, 'failed', { sha: SHA, createdAt: new Date(Date.now() - 3 * HOUR), endedAt: new Date(Date.now() - 3 * HOUR) });
     await seedDeploy(alphaId, 'succeeded', { sha: SHA2, createdAt: new Date(Date.now() - HOUR), endedAt: new Date(Date.now() - HOUR) });
     await seedDeploy(alphaId, 'succeeded', { sha: 'f'.repeat(40), dryRun: true });
+    // Deploys that never ran are not "the last change": held, refused and cancelled ones are skipped.
+    await seedDeploy(alphaId, 'refused', { sha: 'e'.repeat(40) });
+    await seedDeploy(alphaId, 'cancelled', { sha: 'd'.repeat(40) });
+    await seedDeploy(alphaId, 'awaiting_approval', { sha: 'c'.repeat(40) });
     const stats = { cpuPercent: 2.5, memoryBytes: 1000, memoryLimitBytes: null };
     await storeHostInventory(
       db,

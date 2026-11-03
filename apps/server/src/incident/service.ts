@@ -55,13 +55,21 @@ function firstDigest(value: unknown): string | null {
   return null;
 }
 
-/** The newest real deploy of a Deployed app, or the newest update of an Operated stack. */
+/**
+ * States in which a deploy or stack update never touched the host: held, refused, denied or
+ * cancelled before it ran. "The last change" is the last one that ran, so these are skipped — a
+ * refused deploy named beside an incident would point at a change that never happened.
+ */
+const NEVER_RAN_DEPLOY = ['queued', 'awaiting_approval', 'refused', 'cancelled'] as const;
+const NEVER_RAN_UPDATE = ['queued', 'awaiting_approval', 'refused', 'denied', 'cancelled'] as const;
+
+/** The newest deploy of a Deployed app that ran, or the newest update of an Operated stack that ran. */
 export async function lastChangeOf(db: Db, container: Pick<HostContainer, 'tier' | 'app'>): Promise<LastChange | null> {
   const owner = container.app;
   if (owner === null) return null;
   if (container.tier === 'shipped') {
     const target = await db.deployTarget.findFirst({
-      where: { app: { name: owner }, deploy: { dryRun: false } },
+      where: { app: { name: owner }, deploy: { dryRun: false }, state: { notIn: [...NEVER_RAN_DEPLOY] } },
       orderBy: { createdAt: 'desc' },
       select: { state: true, endedAt: true, createdAt: true, deploy: { select: { id: true, requestedSha: true } } },
     });
@@ -77,7 +85,7 @@ export async function lastChangeOf(db: Db, container: Pick<HostContainer, 'tier'
   }
   if (container.tier === 'operated') {
     const update = await db.stackUpdate.findFirst({
-      where: { stackName: owner },
+      where: { stackName: owner, state: { notIn: [...NEVER_RAN_UPDATE] } },
       orderBy: { createdAt: 'desc' },
       select: { id: true, state: true, endedAt: true, createdAt: true, digests: true },
     });

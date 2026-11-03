@@ -41,12 +41,13 @@ The container's sheet offers **Copy for Claude** for a container. The bundle hol
 things:
 
 1. **Facts Shipyard states from fixed rules**, in time order, undated ones last (SHP-REQ-216):
-   - when it began failing;
-   - how many times Docker restarted it;
-   - its Docker state;
+   - when it began failing, while it is failing;
+   - how many times Docker restarted it, when it has;
+   - its Docker state, when that is exited, dead, restarting or paused;
    - the first log line that looks like an error, and how many do;
    - its memory against its limit, when that is 70% or more;
-   - the last deploy or update, and whether it came **before or after** the failure.
+   - the last deploy or update that ran (one held, refused, denied or cancelled never touched the
+     host and is skipped), and whether it came **before or after** the failure.
 
    These are rules, never a model's guess. Shipyard does not diagnose; the reader or Claude does.
 2. **Inspect state**, from the container's latest report: image, digest, state, health, restart
@@ -82,14 +83,17 @@ usual `{ code, gate, message, fix }`.
 ## Each read is audited
 
 Every read records an `incident.read` audit event naming **the reader and the container**, never a
-line of content. The log read inside it leaves its own `logs.view` event as usual, so a read shows
-twice in the audit trail by design.
+line of content. When the agent opens a log session for it, that leaves its own `logs.view` event
+as usual, so a read usually shows twice in the audit trail; when the agent cannot read logs at all,
+only `incident.read` is written. A refused read — wrong role, or a token outside its scope — writes
+no `incident.read`, because no bundle was built.
 
 ## If the agent does not answer
 
 The bundle still comes back. Its facts, inspect state and last change come from the server's latest
 report, so they stand; the logs section is marked **unavailable** and says why (the agent is
-offline, or the reader may not read logs) with the fix. Read the bundle again once the agent is
+offline or did not answer in time, or cannot read logs) with the fix. A reader who may not read logs
+at all gets no bundle: the read is refused before anything is built. Read the bundle again once the agent is
 back.
 
 ## Handing a bundle to Claude

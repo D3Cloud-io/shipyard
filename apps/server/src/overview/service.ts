@@ -1,6 +1,5 @@
 import {
   ACTIVE_STATES,
-  Digest,
   HostInventory,
   Overview,
   type AppTile,
@@ -14,6 +13,7 @@ import {
 } from '@shipyard/schema';
 import type { Db } from '../db.js';
 import { readContainerConditions, type ContainerConditionRow } from '../host/index.js';
+import { lastChangeOf } from '../incident/service.js';
 
 /**
  * Overview, assembled (SHP-ADR-013, SHP-REQ-207, SHP-REQ-209): what runs on the host, what is
@@ -71,50 +71,6 @@ function newestFirst(a: OverviewWork, b: OverviewWork): number {
 
 function oldestFirst(a: OverviewWork, b: OverviewWork): number {
   return byCodePoint(a.at, b.at) || byCodePoint(a.id, b.id);
-}
-
-/** The first `sha256:` digest among an update's per-service digests, or null. */
-function firstDigest(digests: unknown): Digest | null {
-  if (typeof digests !== 'object' || digests === null) return null;
-  for (const value of Object.values(digests)) {
-    const parsed = Digest.safeParse(value);
-    if (parsed.success) return parsed.data;
-  }
-  return null;
-}
-
-async function appLastChange(db: Db, appId: string): Promise<LastChange | null> {
-  const target = await db.deployTarget.findFirst({
-    where: { appId, deploy: { dryRun: false } },
-    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-    select: { state: true, endedAt: true, createdAt: true, deploy: { select: { id: true, requestedSha: true } } },
-  });
-  if (target === null) return null;
-  return {
-    kind: 'deploy',
-    id: target.deploy.id,
-    at: (target.endedAt ?? target.createdAt).toISOString(),
-    state: target.state,
-    sha: target.deploy.requestedSha,
-    digest: null,
-  };
-}
-
-async function stackLastChange(db: Db, stackName: string): Promise<LastChange | null> {
-  const update = await db.stackUpdate.findFirst({
-    where: { stackName },
-    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-    select: { id: true, state: true, digests: true, endedAt: true, createdAt: true },
-  });
-  if (update === null) return null;
-  return {
-    kind: 'stack-update',
-    id: update.id,
-    at: (update.endedAt ?? update.createdAt).toISOString(),
-    state: update.state,
-    sha: null,
-    digest: firstDigest(update.digests),
-  };
 }
 
 /** Every agent's latest inventory, parsed; one that no longer validates is left out, as `GET /api/host` does. */
@@ -350,10 +306,9 @@ async function incidentBanners(db: Db, reported: readonly Reported[], conditions
     if (first === undefined) continue;
     let lastChange: LastChange | null;
     if (group.owner.kind === 'app') {
-      const app = await db.app.findUnique({ where: { name: group.owner.name }, select: { id: true } });
-      lastChange = app === null ? null : await appLastChange(db, app.id);
+      lastChange = await lastChangeOf(db, { tier: 'shipped', app: group.owner.name });
     } else {
-      lastChange = await stackLastChange(db, group.owner.name);
+      lastChange = await lastChangeOf(db, { tier: 'operated', app: group.owner.name });
     }
     banners.push({ owner: group.owner, tier: group.tier, containers: group.containers, since: first.failingSince, lastChange });
   }
@@ -409,7 +364,7 @@ export async function buildOverview(db: Db, now: Date = new Date()): Promise<Ove
       running,
       failing: failingCount,
       ...usageOf(list),
-      lastChange: await appLastChange(db, app.id),
+      lastChange: await lastChangeOf(db, { tier: 'shipped', app: app.name }),
     });
   }
 
