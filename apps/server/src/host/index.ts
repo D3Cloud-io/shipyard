@@ -4,6 +4,9 @@ import type { Logger } from 'pino';
 import type { Db, Prisma } from '../db.js';
 import type { ServiceDeps } from '../deps.js';
 import { sendRefusal } from '../errors.js';
+import { syncContainerConditions } from './conditions.js';
+
+export * from './conditions.js';
 
 /**
  * The host inventory, server side (SHP-ADR-009, SHP-T-14.5): the latest `HostInventory` each agent
@@ -24,8 +27,9 @@ export const HOST_SAMPLES_PER_CONTAINER = 500;
 
 /**
  * Replaces `agentId`'s stored inventory with `inventory`, appends one sample per container that
- * reported stats, and prunes that agent's samples older than the window — in one transaction, so
- * a reader never sees a snapshot without its samples.
+ * reported stats, prunes that agent's samples older than the window, and brings its container
+ * conditions in line (SHP-ADR-013) — in one transaction, so a reader never sees a snapshot without
+ * its samples or its conditions.
  *
  * A sample is stamped with the server's receipt time, not the agent's `sampledAt`: the window is
  * pruned on the server's clock, and a skewed agent clock must not order points out of sequence or
@@ -46,6 +50,7 @@ export async function storeHostInventory(db: Db, agentId: string, inventory: Hos
     await tx.hostSnapshot.upsert({ where: { agentId }, create: { agentId, ...fields }, update: fields });
     if (samples.length > 0) await tx.hostSample.createMany({ data: samples });
     await tx.hostSample.deleteMany({ where: { agentId, at: { lt: new Date(now.getTime() - HOST_SAMPLE_WINDOW_MS) } } });
+    await syncContainerConditions(tx, agentId, inventory.containers, now);
   });
 }
 
