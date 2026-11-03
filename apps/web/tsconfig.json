@@ -17,6 +17,9 @@
     "paths": {
       "@shipyard/schema": [
         "../../packages/schema/src/index.ts"
+      ],
+      "@shipyard/schema/incident-render": [
+        "../../packages/schema/src/incident-render.ts"
       ]
     }
   },

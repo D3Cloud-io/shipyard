@@ -1,4 +1,5 @@
-// Types only, except `renderIncidentBundle`, which is imported on demand (see `renderBundle`).
+// Types only, except the incident renderer, whose module imports nothing but types.
+import { renderIncidentBundle } from '@shipyard/schema/incident-render';
 import type { ContainerHealth, ContainerState, HostResponse, IncidentBundle } from '@shipyard/schema';
 import { request } from './api';
 import { LOGS_FOLLOW_SECONDS, resultWords, type ActionPhase } from './actions';
@@ -26,13 +27,9 @@ export const incidents = {
     request<IncidentBundle>(`/api/containers/${encodeURIComponent(containerId)}/incident`, signal === undefined ? {} : { signal }),
 };
 
-/**
- * The bundle as Markdown, by the one renderer `shipyard_incident` uses. Loaded on demand: the
- * schema package carries every zod schema, which the rest of the console deliberately never bundles.
- */
-export async function renderBundle(bundle: IncidentBundle): Promise<string> {
-  const { renderIncidentBundle } = await import('@shipyard/schema');
-  return renderIncidentBundle(bundle);
+/** The bundle as Markdown, by the one renderer `shipyard_incident` uses. */
+export function renderBundle(bundle: IncidentBundle): Promise<string> {
+  return Promise.resolve(renderIncidentBundle(bundle));
 }
 
 function count(n: number, one: string, many: string): string {
