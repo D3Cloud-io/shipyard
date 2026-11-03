@@ -1,0 +1,52 @@
+{
+  "generatedAt": "2026-11-02T22:10:00.000Z",
+  "hostReportedAt": null,
+  "runs": {
+    "deployedApps": 11,
+    "operatedStacks": 0,
+    "observedProjects": 12,
+    "containers": 88,
+    "running": 86,
+    "failing": 1,
+    "cpuPercent": 80.2,
+    "memoryBytes": 13851000000,
+    "disk": {
+      "dataRoot": {
+        "path": "/DATA",
+        "freeBytes": 10,
+        "totalBytes": 100
+      },
+      "dockerRoot": null
+    }
+  },
+  "now": [],
+  "last24h": {
+    "deploys": {
+      "succeeded": 3,
+      "failed": 0,
+      "rolledBack": 1
+    },
+    "stackUpdates": {
+      "succeeded": 0,
+      "failed": 0
+    },
+    "actions": 2,
+    "backups": {
+      "succeeded": 4,
+      "failed": 0
+    },
+    "recent": [
+      {
+        "kind": "action",
+        "id": "01a19f9e-03d6-7178-a0db-db2a30fd2eb8",
+        "subject": "postroom",
+        "label": "restart",
+        "state": "succeeded",
+        "at": "2026-11-02T22:10:00.000Z"
+      }
+    ]
+  },
+  "apps": [],
+  "projects": [],
+  "incidents": []
+}

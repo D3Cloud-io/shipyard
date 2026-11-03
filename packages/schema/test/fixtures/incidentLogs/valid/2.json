@@ -1,0 +1,10 @@
+{
+  "from": "tail",
+  "lines": [],
+  "unavailable": {
+    "code": "agent_offline",
+    "gate": "none",
+    "message": "m",
+    "fix": "f"
+  }
+}

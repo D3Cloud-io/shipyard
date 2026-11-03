@@ -1,0 +1,9 @@
+{
+  "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "name": "postroom-imap-1",
+  "condition": "down",
+  "state": "restarting",
+  "health": "none",
+  "restartCount": 14,
+  "failingSince": "2026-11-02T22:10:00.000Z"
+}

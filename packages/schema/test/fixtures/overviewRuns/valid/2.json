@@ -1,0 +1,11 @@
+{
+  "deployedApps": 11,
+  "operatedStacks": 0,
+  "observedProjects": 12,
+  "containers": 88,
+  "running": 86,
+  "failing": 1,
+  "cpuPercent": null,
+  "memoryBytes": null,
+  "disk": null
+}

@@ -1,0 +1,115 @@
+{
+  "generatedAt": "2026-11-02T22:10:00.000Z",
+  "hostReportedAt": "2026-11-02T22:10:00.000Z",
+  "runs": {
+    "deployedApps": 11,
+    "operatedStacks": 0,
+    "observedProjects": 12,
+    "containers": 88,
+    "running": 86,
+    "failing": 1,
+    "cpuPercent": 80.2,
+    "memoryBytes": 13851000000,
+    "disk": {
+      "dataRoot": {
+        "path": "/DATA",
+        "freeBytes": 10,
+        "totalBytes": 100
+      },
+      "dockerRoot": null
+    }
+  },
+  "now": [
+    {
+      "kind": "action",
+      "id": "01a19f9e-03d6-7178-a0db-db2a30fd2eb8",
+      "subject": "postroom",
+      "label": "restart",
+      "state": "running",
+      "at": "2026-11-02T22:10:00.000Z"
+    }
+  ],
+  "last24h": {
+    "deploys": {
+      "succeeded": 3,
+      "failed": 0,
+      "rolledBack": 1
+    },
+    "stackUpdates": {
+      "succeeded": 0,
+      "failed": 0
+    },
+    "actions": 2,
+    "backups": {
+      "succeeded": 4,
+      "failed": 0
+    },
+    "recent": [
+      {
+        "kind": "action",
+        "id": "01a19f9e-03d6-7178-a0db-db2a30fd2eb8",
+        "subject": "postroom",
+        "label": "restart",
+        "state": "succeeded",
+        "at": "2026-11-02T22:10:00.000Z"
+      }
+    ]
+  },
+  "apps": [
+    {
+      "name": "postroom",
+      "health": "unhealthy",
+      "containers": 3,
+      "running": 2,
+      "failing": 1,
+      "cpuPercent": 1.5,
+      "memoryBytes": 104857600,
+      "lastChange": {
+        "kind": "deploy",
+        "id": "01a19f9e-03d6-7178-a0db-db2a30fd2eb8",
+        "at": "2026-11-02T22:10:00.000Z",
+        "state": "succeeded",
+        "sha": "0b6ea3d5db13b77d3d3f2dd2042afce42751aff8",
+        "digest": null
+      }
+    }
+  ],
+  "projects": [
+    {
+      "project": "observability",
+      "tier": "observed",
+      "containers": 7,
+      "running": 7,
+      "failing": 0
+    }
+  ],
+  "incidents": [
+    {
+      "owner": {
+        "kind": "app",
+        "name": "postroom"
+      },
+      "tier": "shipped",
+      "containers": [
+        {
+          "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "name": "postroom-imap-1",
+          "condition": "restarting",
+          "state": "restarting",
+          "health": "none",
+          "restartCount": 14,
+          "failingSince": "2026-11-02T22:10:00.000Z"
+        }
+      ],
+      "since": "2026-11-02T22:10:00.000Z",
+      "lastChange": {
+        "kind": "deploy",
+        "id": "01a19f9e-03d6-7178-a0db-db2a30fd2eb8",
+        "at": "2026-11-02T22:10:00.000Z",
+        "state": "succeeded",
+        "sha": "0b6ea3d5db13b77d3d3f2dd2042afce42751aff8",
+        "digest": null
+      }
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "name": "postroom",
+  "health": "stopped",
+  "containers": 3,
+  "running": 2,
+  "failing": 1,
+  "cpuPercent": null,
+  "memoryBytes": null,
+  "lastChange": null
+}
