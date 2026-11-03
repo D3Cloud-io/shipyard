@@ -151,7 +151,7 @@ describe('access (SHP-T-19.2)', () => {
   it('refuses a request with no session or token', async () => {
     const res = await get({});
     expect(res.status).toBe(401);
-    expect((res.body as { code: string }).code).toBe('unauthenticated');
+    expect((res.body as { error: { code: string } }).error.code).toBe('unauthenticated');
   });
 
   it('is empty but valid before anything has reported', async () => {
