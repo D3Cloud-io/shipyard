@@ -8,7 +8,7 @@ stored** (SHP-REQ-215). It carries logs, so it is read by the same people who ma
 
 | Act | Who | Where |
 |---|---|---|
-| Open Overview | the console | Overview (`/overview`) |
+| Open Overview | any signed-in role; any API token (read-only, like Host) | Overview (`/overview`), `GET /api/overview` |
 | Read an incident bundle | admin or operator; a "can read logs" token whose owner is still one, scoped to the container's app or stack | container sheet › Copy for Claude, `shipyard_incident`, `GET /api/containers/:id/incident` |
 
 ## Overview
