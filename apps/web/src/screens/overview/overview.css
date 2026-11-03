@@ -1,0 +1,284 @@
+/* Overview (SHP-T-19.6, SHP-REQ-207, SHP-REQ-209). Phone first — correct at 375–390 px with nothing
+   wider than the screen — then a desktop layout from 1024 px. Tokens only: no hex, no shadow. Kept
+   in the console's layer, so a component's own rules are never overridden by accident. */
+@layer shipyard {
+  .shp-ov-muted {
+    color: var(--color-fg-muted);
+  }
+
+  .shp-ov-quiet,
+  .shp-ov-sentence {
+    margin: 0;
+    color: var(--color-fg-muted);
+    font-size: var(--text-14);
+    line-height: var(--leading-20);
+  }
+  .shp-ov-sentence {
+    color: var(--color-fg);
+  }
+
+  .shp-ov-stale {
+    margin: 0;
+  }
+
+  /* ── Incident banners ─────────────────────────────────────────────── */
+  .shp-ov-incidents {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-12);
+    min-width: 0;
+  }
+  .shp-ov-incident {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .shp-ov-incident__lines {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    font-size: var(--text-14);
+    line-height: var(--leading-20);
+  }
+  .shp-ov-incident__change {
+    margin: var(--space-8) 0 0;
+    color: var(--color-fg-muted);
+    font-size: var(--text-13);
+    line-height: var(--leading-20);
+  }
+  .shp-ov-incident__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-8);
+    min-width: 0;
+  }
+  /* A link drawn as a secondary button: it goes somewhere, so it is a link. */
+  .shp-ov-action {
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--space-32);
+    padding: 0 var(--space-12);
+    border: var(--border-width) solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-surface-card);
+    color: var(--color-fg);
+    font-size: var(--text-13);
+    font-weight: var(--weight-semibold);
+    text-decoration: none;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+  .shp-ov-action:hover {
+    background: var(--color-surface-hover);
+  }
+  .shp-ov-action:focus-visible {
+    outline: var(--focus-width) solid var(--color-focus);
+    outline-offset: var(--focus-offset);
+  }
+  @media (pointer: coarse) {
+    .shp-ov-action {
+      min-height: calc(var(--space-40) + var(--space-4));
+    }
+  }
+
+  /* ── What runs ────────────────────────────────────────────────────── */
+  .shp-ov-stats {
+    min-width: 0;
+  }
+
+  /* ── Work rows ────────────────────────────────────────────────────── */
+  .shp-ov-work {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    border-top: var(--border-width) solid var(--color-border);
+  }
+  .shp-ov-work__row {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: var(--space-4) var(--space-8);
+    align-items: center;
+    padding: var(--space-8) 0;
+    border-bottom: var(--border-width) solid var(--color-border);
+    font-size: var(--text-14);
+    line-height: var(--leading-20);
+  }
+  .shp-ov-work__what {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-4) var(--space-8);
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .shp-ov-work__label {
+    color: var(--color-fg-muted);
+    font-family: var(--font-mono);
+    font-size: var(--text-13);
+  }
+  .shp-ov-work__meta {
+    grid-column: 2;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-8);
+    white-space: nowrap;
+  }
+  .shp-ov-work__age {
+    color: var(--color-fg-muted);
+    font-size: var(--text-13);
+  }
+  @media (pointer: coarse) {
+    .shp-ov-work__link {
+      display: inline-flex;
+      align-items: center;
+      min-height: calc(var(--space-40) + var(--space-4));
+    }
+  }
+
+  /* ── App tiles ────────────────────────────────────────────────────── */
+  .shp-ov-tiles {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-8);
+  }
+  .shp-ov-tile {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    min-width: 0;
+    padding: var(--space-12);
+    border: var(--border-width) solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-surface-card);
+    font-size: var(--text-13);
+    line-height: var(--leading-20);
+  }
+  .shp-ov-tile[data-failing='true'] {
+    border-color: var(--color-danger);
+    background: var(--color-danger-muted);
+  }
+  .shp-ov-tile__head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4) var(--space-8);
+    min-width: 0;
+  }
+  .shp-ov-tile__name {
+    font-size: var(--text-14);
+    font-weight: var(--weight-semibold);
+    overflow-wrap: anywhere;
+  }
+  @media (pointer: coarse) {
+    .shp-ov-tile__name {
+      display: inline-flex;
+      align-items: center;
+      min-height: calc(var(--space-40) + var(--space-4));
+    }
+  }
+  .shp-ov-tile__line {
+    overflow-wrap: anywhere;
+  }
+  /* The phone folds healthy tiles after the first few into one line (P1). */
+  .shp-ov-tile[data-folded='true'] {
+    display: none;
+  }
+  .shp-ov-folded {
+    margin: var(--space-8) 0 0;
+    color: var(--color-fg-muted);
+    font-size: var(--text-13);
+    line-height: var(--leading-20);
+    overflow-wrap: anywhere;
+  }
+  .shp-ov-folded__count {
+    color: var(--color-fg);
+    font-weight: var(--weight-semibold);
+  }
+
+  /* ── Project chips ────────────────────────────────────────────────── */
+  .shp-ov-chips__list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-8);
+  }
+  .shp-ov-chip {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-4) var(--space-6);
+    max-width: 100%;
+    padding: var(--space-4) var(--space-12);
+    border: var(--border-width) solid var(--color-border);
+    border-radius: var(--radius-full);
+    font-size: var(--text-13);
+    line-height: var(--leading-20);
+    overflow-wrap: anywhere;
+  }
+  .shp-ov-chip[data-failing='true'] {
+    border-color: var(--color-danger);
+    background: var(--color-danger-muted);
+  }
+  .shp-ov-chip__name {
+    font-weight: var(--weight-semibold);
+  }
+  .shp-ov-chip__count {
+    color: var(--color-fg-muted);
+  }
+  .shp-ov-chips__summary {
+    margin: 0;
+    color: var(--color-fg-muted);
+    font-size: var(--text-14);
+    line-height: var(--leading-20);
+  }
+  /* While none fails, a phone shows the one line and not the chips. */
+  .shp-ov-chips[data-quiet='true'] .shp-ov-chips__list {
+    display: none;
+  }
+
+  .shp-ov-pair {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-24);
+    min-width: 0;
+  }
+
+  /* ── Desktop ──────────────────────────────────────────────────────── */
+  @media (min-width: 1024px) {
+    .shp-ov-pair {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      align-items: start;
+    }
+    .shp-ov-work__row {
+      grid-template-columns: auto minmax(0, 1fr) auto;
+    }
+    .shp-ov-work__meta {
+      grid-column: auto;
+    }
+    .shp-ov-tiles {
+      grid-template-columns: repeat(auto-fill, minmax(calc(var(--space-64) * 3.5), 1fr));
+    }
+    .shp-ov-tile[data-folded='true'] {
+      display: flex;
+    }
+    .shp-ov-folded {
+      display: none;
+    }
+    .shp-ov-chips[data-quiet='true'] .shp-ov-chips__list {
+      display: flex;
+    }
+    .shp-ov-chips__summary {
+      display: none;
+    }
+  }
+}
