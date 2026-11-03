@@ -1,0 +1,18 @@
+{
+  "deployedApps": 11,
+  "operatedStacks": 0,
+  "observedProjects": 12,
+  "containers": -1,
+  "running": 86,
+  "failing": 1,
+  "cpuPercent": 80.2,
+  "memoryBytes": 13851000000,
+  "disk": {
+    "dataRoot": {
+      "path": "/DATA",
+      "freeBytes": 10,
+      "totalBytes": 100
+    },
+    "dockerRoot": null
+  }
+}

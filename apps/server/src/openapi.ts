@@ -779,6 +779,23 @@ function buildPaths(): Record<string, unknown> {
         responses: { '200': jsonResponse('One snapshot per agent that has reported an inventory; empty until one has.', 'HostResponse'), '4XX': ERROR_RESPONSE },
       },
     },
+    '/overview': {
+      get: {
+        summary: 'Overview (SHP-ADR-013): what runs, what is happening now, the last 24 hours, app tiles, project chips and incident banners (any signed-in role, any token); read-only',
+        operationId: 'getOverview',
+        security: [{ session: [] }, { bearer: [] }],
+        responses: { '200': jsonResponse('The Overview, built from the latest reports and the ledger.', 'Overview'), '4XX': ERROR_RESPONSE },
+      },
+    },
+    '/containers/{id}/incident': {
+      get: {
+        summary: "One container's incident bundle (SHP-ADR-013): facts, redacted logs since the first error, inspect state without env, the last change. Built on request, never stored, audited (admin or operator; a token with can_read_logs scoped to the owner)",
+        operationId: 'getContainerIncident',
+        security: [{ session: [] }, { bearer: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, description: 'The full 64-hex container ID', schema: { type: 'string', pattern: '^[0-9a-f]{64}$' } }],
+        responses: { '200': jsonResponse('The bundle.', 'IncidentBundle'), '4XX': ERROR_RESPONSE, '5XX': ERROR_RESPONSE },
+      },
+    },
     '/health': {
       get: {
         summary: 'Health check',

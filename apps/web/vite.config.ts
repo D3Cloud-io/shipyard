@@ -9,9 +9,13 @@ const SERVER = 'http://127.0.0.1:3300';
 export default defineConfig({
   plugins: [react()],
   resolve: {
-    // Types only (`import type`), so nothing from zod reaches the bundle; the alias exists because
-    // the package export points at dist/, which is not built when the console is.
-    alias: { '@shipyard/schema': resolve(import.meta.dirname, '../../packages/schema/src/index.ts') },
+    // Types only (`import type`), so nothing from zod reaches the bundle; the aliases exist because
+    // the package export points at dist/, which is not built when the console is. The one runtime
+    // import is the incident renderer, by its own subpath, which imports nothing but types.
+    alias: [
+      { find: '@shipyard/schema/incident-render', replacement: resolve(import.meta.dirname, '../../packages/schema/src/incident-render.ts') },
+      { find: /^@shipyard\/schema$/, replacement: resolve(import.meta.dirname, '../../packages/schema/src/index.ts') },
+    ],
   },
   build: { outDir: 'dist', sourcemap: false },
   server: {

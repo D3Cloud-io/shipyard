@@ -8,6 +8,7 @@ import {
   ShipyardDeployStatusInput,
   ShipyardDryRunInput,
   ShipyardHostInput,
+  ShipyardIncidentInput,
   ShipyardLogsInput,
   ShipyardPruneInput,
   ShipyardRollbackInput,
@@ -15,6 +16,7 @@ import {
   ShipyardStatusInput,
   ShipyardVolumeBackupInput,
   refusal,
+  renderIncidentBundle,
   type ActionStatus,
   type DeployStatus,
   type MaintenanceStatus,
@@ -37,6 +39,7 @@ import {
 } from '../deploys/service.js';
 import { getGroupDeployStatus, waitForGroupChange } from '../groups/service.js';
 import { readHostSnapshots, snapshotContainers } from '../host/index.js';
+import { buildIncidentBundle } from '../incident/index.js';
 import { logsViewerOf, readLogsTail } from '../logs/service.js';
 import {
   getMaintenance,
@@ -721,6 +724,39 @@ export function buildMcpServer(
         lines,
         note: 'Redacted on the host; never stored.',
       });
+    },
+  );
+
+  server.registerTool(
+    'shipyard_incident',
+    {
+      title: 'Container incident',
+      description:
+        'Read-only. One container\'s incident bundle, by `container` — the name the Host view shows, or its full ' +
+        '64-character ID: what Shipyard sees from fixed rules, in time order; its redacted logs since the first ' +
+        'error among the last 2000 lines (or the last 200 when none is an error); its inspect state, never its ' +
+        'environment; and its app\'s last deploy or its stack\'s last update. Built on request and never ' +
+        'stored; each read is audited. Returns the bundle as Markdown, with the same bundle as structured data. A ' +
+        'token reads only the containers of the apps and adopted stacks it is scoped to, never an Observed ' +
+        'one, and needs to be issued with logs allowed (Settings › Claude & tokens). If the agent does not ' +
+        'answer within 30 s the logs are marked unavailable and the rest still returns.',
+      inputSchema: toolInput(ShipyardIncidentInput),
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    async ({ container }) => {
+      // Who may read comes before what exists, so a token that cannot read learns nothing about names.
+      const viewer = await logsViewerOf(deps, caller);
+      if ('code' in viewer) {
+        return refused(caller.actor?.type === 'token' && viewer.message.startsWith('This token may not read') ? LOGS_NOT_ALLOWED : viewer);
+      }
+      const ref = CONTAINER_ID_RE.test(container) ? { containerId: container } : { containerName: container };
+      const bundle = await buildIncidentBundle(deps, caller, ref, { logsTimeoutMs: LOGS_TAIL_WAIT_MS });
+      if ('code' in bundle) return refused(bundle);
+      // The text is the one renderer's Markdown (what Copy for Claude copies); the bundle rides beside it.
+      return {
+        content: [{ type: 'text', text: renderIncidentBundle(bundle) }],
+        structuredContent: bundle,
+      };
     },
   );
 

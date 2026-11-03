@@ -1,12 +1,16 @@
 import { Badge, Button, Modal, StatusDot } from '@d3cloud/ui';
 import type { HostContainer, LifecycleVerb } from '@shipyard/schema';
 import { useState } from 'react';
-import { canAct, canReadLogs, containerRequest, containerVerbs, isBusy, targetFor, useAction } from '../../lib/actions';
+import { canAct, canReadLogs, containerRequest, containerVerbs, isBusy, targetFor, useAction, useLogs, type Logs } from '../../lib/actions';
 import { useMe } from '../../lib/auth';
+import type { FollowStatus } from '../../lib/incident';
 import { containerStatus, cpuWords, isDeployedTier, memoryWords, restartWords } from '../../lib/host';
 import { LIFECYCLE_VERB_WORDS, TIER_WORDS } from '../../lib/words';
 import { ActionProgress } from './ActionProgress';
-import { LogsViewer } from './LogsViewer';
+import { CopyForClaude } from './CopyForClaude';
+import { LogsPanel } from './LogsViewer';
+import { RestartConfirm } from './RestartConfirm';
+import { RestartFollow } from './RestartFollow';
 import { StopConfirm } from './StopConfirm';
 
 /**
@@ -16,7 +20,9 @@ import { StopConfirm } from './StopConfirm';
  * beside the list; on a phone a bottom sheet, the way every sheet in the console is.
  *
  * Observed containers get no action at all (SHP-REQ-185); a viewer sees none either. Stop asks
- * first and is only ever here (SHP-REQ-188). The footer says the logs are redacted on the host and
+ * first and is only ever here (SHP-REQ-188). Restart asks first too, and once sent it is followed
+ * until the container is healthy again or failing again (SHP-T-19.7, SHP-REQ-210/211/242); Copy for
+ * Claude (admin and operator, any tier) copies its incident bundle (SHP-REQ-212). The footer says the logs are redacted on the host and
  * never stored, and that opening them is audited (SHP-REQ-192).
  */
 
@@ -46,39 +52,45 @@ function Facts({ container }: { container: HostContainer }) {
   );
 }
 
-function Actions({ container }: { container: HostContainer }) {
+function Actions({ container, logs }: { container: HostContainer; logs: Logs }) {
   const me = useMe();
   const { phase, run } = useAction();
-  const [confirmStop, setConfirmStop] = useState(false);
+  const [confirm, setConfirm] = useState<'stop' | 'restart' | null>(null);
+  // A confirmed restart being followed: a counter, so asking again starts the follow afresh.
+  const [followed, setFollowed] = useState(0);
   const target = targetFor(container.tier, container.app);
   const service = container.compose?.service ?? null;
+  const canRead = canReadLogs(me?.role);
+  const copy = canRead ? <CopyForClaude container={container} /> : null;
 
   if (target === null || service === null) {
-    return <p className="shp-csheet__muted">Observed: Shipyard only watches this container. Adopt its stack to start, stop or restart it here.</p>;
+    return (
+      <div className="shp-csheet__actions">
+        <p className="shp-csheet__muted">Observed: Shipyard only watches this container. Adopt its stack to start, stop or restart it here.</p>
+        {copy}
+      </div>
+    );
   }
   if (!canAct(me?.role)) return null;
 
   const busy = isBusy(phase);
   const ask = (verb: LifecycleVerb) => {
     const body = containerRequest(container, verb);
-    if (body !== null) run(body);
+    if (body === null) return;
+    setFollowed((n) => (verb === 'restart' ? n + 1 : 0));
+    run(body);
   };
   const verbs = containerVerbs(container);
+  const open = (which: 'stop' | 'restart') => () => {
+    setConfirm(which);
+  };
 
   return (
     <div className="shp-csheet__actions">
       <div className="shp-csheet__buttons" role="group" aria-label="Actions">
         {verbs.map((verb) =>
           verb === 'stop' ? (
-            <Button
-              key={verb}
-              type="button"
-              variant="danger-ghost"
-              disabled={busy}
-              onClick={() => {
-                setConfirmStop(true);
-              }}
-            >
+            <Button key={verb} type="button" variant="danger-ghost" disabled={busy} onClick={open('stop')}>
               {LIFECYCLE_VERB_WORDS.stop}
             </Button>
           ) : (
@@ -87,7 +99,7 @@ function Actions({ container }: { container: HostContainer }) {
               type="button"
               variant="secondary"
               disabled={busy}
-              onClick={() => {
+              onClick={verb === 'restart' ? open('restart') : () => {
                 ask(verb);
               }}
             >
@@ -97,10 +109,33 @@ function Actions({ container }: { container: HostContainer }) {
         )}
         {verbs.includes('restart') ? <span className="shp-csheet__hint">{HINT}</span> : null}
       </div>
-      <ActionProgress phase={phase} />
+      {followed > 0 && !busy ? null : copy}
+      {followed > 0 ? (
+        busy ? (
+          <ActionProgress phase={phase} />
+        ) : (
+          <RestartFollow
+            key={followed}
+            name={container.name}
+            phase={phase}
+            onRestarted={() => {
+              // The old stream ended with the old process; this one opens on the restarted container.
+              if (canRead) logs.setFollow(true);
+            }}
+            onSettled={(status: FollowStatus) => {
+              if (status === 'healthy' && canRead) logs.setFollow(false);
+            }}
+            actions={copy}
+          />
+        )
+      ) : (
+        <ActionProgress phase={phase} />
+      )}
       <StopConfirm
-        open={confirmStop}
-        onOpenChange={setConfirmStop}
+        open={confirm === 'stop'}
+        onOpenChange={(next) => {
+          if (!next) setConfirm(null);
+        }}
         name={container.name}
         target={target}
         service={service}
@@ -108,7 +143,32 @@ function Actions({ container }: { container: HostContainer }) {
           ask('stop');
         }}
       />
+      <RestartConfirm
+        open={confirm === 'restart'}
+        onOpenChange={(next) => {
+          if (!next) setConfirm(null);
+        }}
+        name={container.name}
+        target={target}
+        service={service}
+        onConfirm={() => {
+          ask('restart');
+        }}
+      />
     </div>
+  );
+}
+
+/** One container's actions and logs, sharing the log stream so a restart can turn Follow on. */
+function SheetBody({ container }: { container: HostContainer }) {
+  const me = useMe();
+  const allowed = canReadLogs(me?.role);
+  const logs = useLogs(container.id, allowed);
+  return (
+    <>
+      <Actions container={container} logs={logs} />
+      <LogsPanel logs={logs} allowed={allowed} />
+    </>
   );
 }
 
@@ -120,7 +180,6 @@ export interface ContainerSheetProps {
 }
 
 export function ContainerSheet({ container, open, onClose }: ContainerSheetProps) {
-  const me = useMe();
   const onOpenChange = (next: boolean) => {
     if (!next) onClose();
   };
@@ -150,8 +209,7 @@ export function ContainerSheet({ container, open, onClose }: ContainerSheetProps
         </Button>
       </span>
       <div className="shp-csheet__body">
-        <Actions key={container.id} container={container} />
-        <LogsViewer key={container.id} containerId={container.id} allowed={canReadLogs(me?.role)} />
+        <SheetBody key={container.id} container={container} />
       </div>
     </Modal>
   );

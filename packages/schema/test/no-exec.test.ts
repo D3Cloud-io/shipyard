@@ -60,6 +60,7 @@ import {
   PruneRequest,
   ShipyardPruneInput,
   ShipyardVolumeBackupInput,
+  ShipyardIncidentInput,
 } from '../src/index.js';
 import {
   ShipyardStatusInput,
@@ -155,6 +156,7 @@ const REQUEST_SCHEMAS: Record<string, ZodType> = {
   PruneRequest,
   ShipyardPruneInput,
   ShipyardVolumeBackupInput,
+  ShipyardIncidentInput,
 };
 
 const REQUEST_FIXTURE_DIR: Record<string, string> = {
@@ -219,6 +221,7 @@ const REQUEST_FIXTURE_DIR: Record<string, string> = {
   PruneRequest: 'pruneRequest',
   ShipyardPruneInput: 'mcpPrune',
   ShipyardVolumeBackupInput: 'mcpVolumeBackup',
+  ShipyardIncidentInput: 'mcpIncident',
 };
 
 describe('request schema coverage', () => {

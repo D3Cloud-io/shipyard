@@ -1,0 +1,112 @@
+/* Restart's confirmation and follow, and Copy for Claude (SHP-T-19.7, SHP-ADR-013). Tokens only,
+   in the console's layer, like styles.css. */
+@layer shipyard {
+  .shp-inc-follow {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-8);
+    min-width: 0;
+    padding: var(--space-12);
+    border: var(--border-width) solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-surface-card);
+  }
+  .shp-inc-follow__head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-4) var(--space-8);
+    font-weight: var(--weight-semibold);
+  }
+  .shp-inc-follow__detail,
+  .shp-inc-follow__fix {
+    margin: 0;
+    color: var(--color-fg-muted);
+    font-size: var(--text-13);
+    line-height: var(--leading-20);
+    overflow-wrap: anywhere;
+  }
+  .shp-inc-steps {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    font-size: var(--text-13);
+    line-height: var(--leading-20);
+  }
+  .shp-inc-step {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-8);
+    min-width: 0;
+    color: var(--color-fg-muted);
+  }
+  .shp-inc-step[data-mark='done'],
+  .shp-inc-step[data-mark='active'] {
+    color: var(--color-fg);
+  }
+  .shp-inc-step[data-mark='failed'] {
+    color: var(--color-danger);
+  }
+  .shp-inc-step__mark {
+    flex: none;
+    width: var(--space-16);
+    text-align: center;
+  }
+  .shp-inc-step__label {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .shp-inc-step__time {
+    margin-left: auto;
+    flex: none;
+    color: var(--color-fg-muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .shp-inc-follow__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-8);
+  }
+
+  .shp-inc-copy {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-8);
+    min-width: 0;
+  }
+  .shp-inc-copy__line {
+    margin: 0;
+    color: var(--color-fg-muted);
+    font-size: var(--text-13);
+    line-height: var(--leading-20);
+    overflow-wrap: anywhere;
+  }
+  .shp-inc-copy__line:empty {
+    display: none;
+  }
+  .shp-inc-copy__manual {
+    box-sizing: border-box;
+    width: 100%;
+    max-height: 16rem;
+    padding: var(--space-8) var(--space-12);
+    border: var(--border-width) solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-surface);
+    color: var(--color-fg);
+    font-family: var(--font-mono);
+    font-size: var(--text-12);
+    line-height: var(--leading-20);
+    resize: vertical;
+  }
+  .shp-inc-copy__manual:focus-visible {
+    outline: var(--focus-width) solid var(--color-focus);
+    outline-offset: var(--focus-offset);
+  }
+  .shp-inc-copy > .d3-alrt {
+    width: 100%;
+  }
+}

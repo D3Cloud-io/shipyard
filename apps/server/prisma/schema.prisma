@@ -250,6 +250,7 @@ model Agent {
   stackUpdates    StackUpdate[]
   maintenanceJobs MaintenanceJob[]
   volumeArchives  VolumeArchive[]
+  containerConditions ContainerCondition[]
 
   @@map("agent")
 }
@@ -288,6 +289,23 @@ model HostSample {
 
   @@index([agentId, containerName, at])
   @@map("host_sample")
+}
+
+/// When each failing container began failing (SHP-ADR-013, SHP-REQ-209), kept by `storeHostInventory`:
+/// a row appears on the first report in which a container is unhealthy or restarting, by the server's
+/// clock, and is deleted on the first report in which it is neither (or is gone). Keyed by name, which
+/// survives a recreate. Holds no log or probe output.
+model ContainerCondition {
+  agentId       String   @map("agent_id") @db.Uuid
+  containerName String   @map("container_name")
+  /// `unhealthy` or `restarting` (`IncidentCondition`).
+  condition     String
+  since         DateTime @db.Timestamptz(3)
+
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@id([agentId, containerName])
+  @@map("container_condition")
 }
 
 // ─── Apps (read-only mirror written only by agent reports) ────────────────

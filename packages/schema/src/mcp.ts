@@ -135,6 +135,18 @@ export const ShipyardVolumeBackupInput = z
   .meta({ id: 'ShipyardVolumeBackupInput', description: 'Input for the shipyard_volume_backup tool' });
 export type ShipyardVolumeBackupInput = z.infer<typeof ShipyardVolumeBackupInput>;
 
+/**
+ * `shipyard_incident` (SHP-ADR-013, SHP-REQ-213): one container's incident bundle, read-only,
+ * never stored. Scope follows `shipyard_logs`: only containers of the apps and stacks the token names.
+ */
+export const ShipyardIncidentInput = z
+  .strictObject({
+    /** A container name as the Host view shows it, or its full ID. */
+    container: z.string().min(1).max(255),
+  })
+  .meta({ id: 'ShipyardIncidentInput', description: 'Input for the shipyard_incident tool' });
+export type ShipyardIncidentInput = z.infer<typeof ShipyardIncidentInput>;
+
 export const MCP_TOOLS = {
   shipyard_status: ShipyardStatusInput,
   shipyard_dry_run: ShipyardDryRunInput,
@@ -149,4 +161,5 @@ export const MCP_TOOLS = {
   shipyard_stack_update: ShipyardStackUpdateInput,
   shipyard_prune: ShipyardPruneInput,
   shipyard_volume_backup: ShipyardVolumeBackupInput,
+  shipyard_incident: ShipyardIncidentInput,
 } as const;

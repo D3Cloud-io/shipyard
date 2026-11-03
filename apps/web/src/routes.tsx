@@ -13,6 +13,7 @@ import { Deploy, DeployLiveRedirect } from './screens/Deploy';
 import { Home } from './screens/Home';
 import { Host } from './screens/Host';
 import { NotFound } from './screens/NotFound';
+import { Overview } from './screens/overview/Overview';
 import { Restore } from './screens/Restore';
 import { RolloutProgress } from './screens/RolloutProgress';
 import { SettingsSection } from './screens/SettingsSection';
@@ -170,6 +171,8 @@ export function AppRoutes() {
         <Route path="rollouts/:id" element={<RolloutProgress />} />
         <Route path="builds/:id" element={<BuildDetail />} />
         <Route path="activity" element={<Activity />} />
+        {/* Overview (SHP-ADR-013): at /overview until it becomes the home in SHP-T-19.9. */}
+        <Route path="overview" element={<Overview />} />
         <Route path="host" element={<Host />} />
         <Route path="settings" element={<SettingsHome />} />
         <Route path="settings/:section" element={<SettingsSection />} />

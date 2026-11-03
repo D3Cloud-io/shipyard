@@ -34,6 +34,7 @@ const TOOLS = [
   'shipyard_deploy_status',
   'shipyard_dry_run',
   'shipyard_host',
+  'shipyard_incident',
   'shipyard_logs',
   'shipyard_maintenance_status',
   'shipyard_prune',
@@ -222,7 +223,7 @@ describe('two sessions race (the doneWhen)', () => {
 });
 
 describe('the endpoint', () => {
-  it('lists exactly the fifteen tools', async () => {
+  it('lists exactly the sixteen tools', async () => {
     const client = await connect(await tokenFor('a', ['web']));
     const { tools } = await client.listTools();
     expect(tools.map((t) => t.name).sort()).toEqual(TOOLS);

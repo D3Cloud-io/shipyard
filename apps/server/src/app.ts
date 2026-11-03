@@ -34,6 +34,8 @@ import { actionsRouter } from './actions/index.js';
 import { logsRouter } from './logs/index.js';
 import { stackUpdatesRouter, stacksRouter } from './stack-updates/index.js';
 import { maintenanceRouter } from './maintenance/index.js';
+import { overviewRouter } from './overview/index.js';
+import { incidentRouter } from './incident/index.js';
 import { setupRouter, type SetupDeps } from './setup/index.js';
 import { settingsRouter } from './settings/index.js';
 import { githubWebhookBody, githubWebhookRouter } from './webhooks/index.js';
@@ -165,6 +167,9 @@ export function createApp(deps: AppDeps): Express {
   // Lifecycle actions and container logs (SHP-T-15.4; SHP-ADR-010, SHP-ADR-011).
   app.use('/api/actions', actionsRouter(serviceDeps));
   app.use('/api/logs', logsRouter(serviceDeps));
+  // Overview and incident bundles (SHP-ADR-013, SHP-P-19).
+  app.use('/api/overview', overviewRouter(serviceDeps));
+  app.use('/api/containers', incidentRouter(serviceDeps));
   // Stack updates by digest (SHP-T-16.3; SHP-ADR-010, SHP-REQ-195, SHP-REQ-199, SHP-REQ-200).
   app.use('/api/stacks', stacksRouter(serviceDeps));
   app.use('/api/stack-updates', stackUpdatesRouter(serviceDeps));
