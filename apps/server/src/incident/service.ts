@@ -129,9 +129,18 @@ export async function buildIncidentBundle(
     const named = containers.filter((c) => c.container.name === name);
     const only = named[0];
     if (only === undefined) return refusal('unknown_container', `The agent does not report a container named ${name}.`);
-    // Two hosts can each run a container of one name; reading the first would be a guess about whose logs.
-    if (named.length > 1) return refusal('invalid_request', `More than one host reports a container named ${name}.`, 'Use its full 64-character ID from shipyard_host.');
-    found = only;
+    if (named.length > 1) {
+      // A token is told only about the containers it may read, so the scope check comes first: an
+      // out-of-scope name is refused as forbidden however many hosts report it.
+      const readable = viewer.type === 'token' ? named.filter((c) => tokenLogsScopeRefusal(caller, c.container) === null) : named;
+      const sole = readable[0];
+      if (sole === undefined) return tokenLogsScopeRefusal(caller, only.container) ?? refusal('forbidden', `This token is not scoped to ${name}.`);
+      // Two hosts can each run a container of one name; reading the first would be a guess about whose logs.
+      if (readable.length > 1) return refusal('invalid_request', `More than one host reports a container named ${name}.`, 'Use its full 64-character ID from shipyard_host.');
+      found = sole;
+    } else {
+      found = only;
+    }
   } else {
     return refusal('invalid_request', 'Name a container by its ID or its name.');
   }

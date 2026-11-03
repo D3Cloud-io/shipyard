@@ -312,7 +312,7 @@ describe('shipyard_incident', () => {
 
   it('refuses a name two agents both report, and points at the full ID', async () => {
     const other = await db.agent.create({ data: { publicKey: 'other-key', fingerprint: `fp-${randomUUID()}`, confirmedAt: new Date() } });
-    await storeHostInventory(db, other.id, inventory([container('web-1', { id: hex64('web-1 on the other host') })]), T0);
+    await storeHostInventory(db, other.id, inventory([container('web-1', { id: hex64('web-1 on the other host'), tier: 'shipped', app: 'web', compose: { project: 'web', service: 'web' } })]), T0);
     const client = await connect(await tokenFor('claude', ['web'], { canReadLogs: true }));
     const refusal = refusalOf(await call(client, { container: 'web-1' }));
     expect(refusal).toMatchObject({
@@ -327,6 +327,23 @@ describe('shipyard_incident', () => {
     const byId = await call(client, { container: WEB.id });
     expect((await sent).containerId).toBe(WEB.id);
     expect(byId.isError ?? false).toBe(false);
+  });
+
+  it('refuses an out-of-scope name as forbidden even when two hosts report it, so the token learns no more', async () => {
+    const other = await db.agent.create({ data: { publicKey: 'other-key', fingerprint: `fp-${randomUUID()}`, confirmedAt: new Date() } });
+    await storeHostInventory(db, other.id, inventory([container('web-1', { id: hex64('web-1 on the other host'), tier: 'shipped', app: 'web', compose: { project: 'web', service: 'web' } })]), T0);
+    const client = await connect(await tokenFor('claude', ['api'], { canReadLogs: true }));
+    expect(refusalOf(await call(client, { container: 'web-1' })).code).toBe('forbidden');
+  });
+
+  it('reads the one same-named container the token may read when the other host\'s is outside its scope', async () => {
+    const other = await db.agent.create({ data: { publicKey: 'other-key', fingerprint: `fp-${randomUUID()}`, confirmedAt: new Date() } });
+    await storeHostInventory(db, other.id, inventory([container('web-1', { id: hex64('observed web-1 elsewhere') })]), T0);
+    const client = await connect(await tokenFor('claude', ['web'], { canReadLogs: true }));
+    const sent = agentSends(ERROR_LINES);
+    const result = await call(client, { container: 'web-1' });
+    expect((await sent).containerId).toBe(WEB.id);
+    expect(result.isError ?? false).toBe(false);
   });
 
   it('rejects input that is not a container string', async () => {
