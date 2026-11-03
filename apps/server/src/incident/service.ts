@@ -126,8 +126,12 @@ export async function buildIncidentBundle(
     if (found === undefined) return refusal('unknown_container', 'The agent does not report a container with that ID.');
   } else if (ref.containerName !== undefined) {
     const name = ref.containerName;
-    found = containers.find((c) => c.container.name === name);
-    if (found === undefined) return refusal('unknown_container', `The agent does not report a container named ${name}.`);
+    const named = containers.filter((c) => c.container.name === name);
+    const only = named[0];
+    if (only === undefined) return refusal('unknown_container', `The agent does not report a container named ${name}.`);
+    // Two hosts can each run a container of one name; reading the first would be a guess about whose logs.
+    if (named.length > 1) return refusal('invalid_request', `More than one host reports a container named ${name}.`, 'Use its full 64-character ID from shipyard_host.');
+    found = only;
   } else {
     return refusal('invalid_request', 'Name a container by its ID or its name.');
   }

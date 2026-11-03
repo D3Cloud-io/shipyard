@@ -114,6 +114,9 @@ hand is drift, and Shipyard refuses the next one until someone resolves it.
   `shipyard_action` (start, restart or recreate an app or adopted stack; stop is console-only) ·
   `shipyard_logs` (a redacted tail; the token needs logs allowed and reads only containers of the apps
   and stacks it is scoped to, never Observed ones) ·
+  `shipyard_incident` (one container's incident bundle: facts, redacted logs since the first error, inspect
+  state, last change; same token and scope rule as `shipyard_logs`; built on request, never stored; clients
+  connected before it existed must reconnect to see it) ·
   `shipyard_stack_update` (queue an update of an adopted `updates: digest` stack to its reported candidates;
   a token's update is held for a deployer's approval in the console unless the stack's policy is `never`) ·
   `shipyard_stack_update_status` (poll it; the token must be scoped to the stack) ·
