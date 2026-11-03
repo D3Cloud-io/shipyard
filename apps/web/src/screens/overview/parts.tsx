@@ -60,7 +60,7 @@ export function RunsStats({ runs, tiles }: { runs: OverviewRuns; tiles: readonly
         unit="cores"
         footnote={
           <>
-            {`${coresWords(runs.cpuPercent)} of the host's CPU and ${gbWords(runs.memoryBytes)} of memory in containers.`}{' '}
+            {`${coresWords(runs.cpuPercent)} cores of CPU and ${gbWords(runs.memoryBytes)} of memory in containers.`}{' '}
             <span className="shp-ov-muted">Load average lives in Grafana.</span>
           </>
         }

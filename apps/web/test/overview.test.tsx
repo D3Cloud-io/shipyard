@@ -233,7 +233,7 @@ describe('the Overview screen', () => {
     expect(within(stats).getByText('of 6 healthy')).toBeInTheDocument();
     expect(within(stats).getByText('of 88 running')).toBeInTheDocument();
     expect(within(stats).getByText('3 failing')).toBeInTheDocument();
-    expect(within(stats).getByText(/0\.8 of the host's CPU and 3\.2 GB of memory in containers\./)).toBeInTheDocument();
+    expect(within(stats).getByText(/0\.8 cores of CPU and 3\.2 GB of memory in containers\./)).toBeInTheDocument();
     expect(within(stats).getByText('Load average lives in Grafana.')).toBeInTheDocument();
     expect(within(stats).getByText('of 904.0 GB on /DATA')).toBeInTheDocument();
 
