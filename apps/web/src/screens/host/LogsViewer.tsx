@@ -132,6 +132,11 @@ function Body({ logs }: { logs: Logs }) {
 
 export function LogsViewer({ containerId, allowed }: { containerId: string; allowed: boolean }) {
   const logs = useLogs(containerId, allowed);
+  return <LogsPanel logs={logs} allowed={allowed} />;
+}
+
+/** The viewer over logs its parent owns, so the sheet can turn Follow on after a restart (SHP-REQ-211). */
+export function LogsPanel({ logs, allowed }: { logs: Logs; allowed: boolean }) {
   return (
     <section className="shp-logs" aria-labelledby="shp-logs-heading">
       <div className="shp-logs__head">

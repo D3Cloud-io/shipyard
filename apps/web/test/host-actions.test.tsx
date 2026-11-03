@@ -189,6 +189,13 @@ async function openSheet(path = `/host?container=${WORKER.id}`): Promise<HTMLEle
   return screen.findByRole('dialog', { name: WORKER.name });
 }
 
+/** Restart asks first (SHP-REQ-210): press it, then confirm in the dialog that names the container. */
+async function confirmRestart(user: ReturnType<typeof userEvent.setup>, sheet: HTMLElement, name: string): Promise<void> {
+  await user.click(within(sheet).getByRole('button', { name: 'Restart' }));
+  const confirm = await screen.findByRole('dialog', { name: `Restart ${name}?` });
+  await user.click(within(confirm).getByRole('button', { name: 'Restart' }));
+}
+
 // ── The model ────────────────────────────────────────────────────────────
 
 describe('the actions model (SHP-ADR-010)', () => {
@@ -371,7 +378,7 @@ describe('the container sheet', () => {
     });
     const user = userEvent.setup();
     const sheet = await openSheet();
-    await user.click(within(sheet).getByRole('button', { name: 'Restart' }));
+    await confirmRestart(user, sheet, WORKER.name);
     expect(posts(calls, '/api/actions').map((c) => c.body)).toEqual([{ target: { kind: 'app', name: 'bindery' }, verb: 'restart', service: 'worker' }]);
 
     expect(await within(sheet).findByText('Queued')).toBeInTheDocument();
@@ -408,7 +415,7 @@ describe('the container sheet', () => {
     const user = userEvent.setup();
     renderAt(`/host?container=${IMMICH.id}`);
     const sheet = await screen.findByRole('dialog', { name: IMMICH.name });
-    await user.click(within(sheet).getByRole('button', { name: 'Restart' }));
+    await confirmRestart(user, sheet, IMMICH.name);
     expect(posts(calls, '/api/actions').map((c) => c.body)).toEqual([{ target: { kind: 'stack', name: 'immich' }, verb: 'restart', service: 'server' }]);
     expect(await within(sheet).findByText(refusal.message)).toBeInTheDocument();
     expect(within(sheet).getByText(refusal.fix)).toBeInTheDocument();
