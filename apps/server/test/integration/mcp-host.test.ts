@@ -258,6 +258,35 @@ describe('shipyard_host', () => {
     expect(await counts()).toEqual(before);
   });
 
+  it('blanks health-check output unless the token may read that container\'s logs (SHP-ADR-011, SHP-REQ-224)', async () => {
+    const output = 'curl: (7) Failed to connect to localhost port 8080';
+    const probe = { start: '2026-10-22T11:59:00.000Z', end: '2026-10-22T11:59:01.000Z', exitCode: 1, output };
+    await storeHostInventory(db, agentId, {
+      ...INVENTORY,
+      containers: INVENTORY.containers.map((c) => ({ ...c, health: 'unhealthy' as const, healthLog: [probe] })),
+    });
+    for (const [name, id] of await seedApps('web')) appIds.set(name, id);
+    const user = await db.user.create({ data: { email: `logs-${randomUUID()}@example.com`, displayName: 'logs', role: 'operator' } });
+    const { token, hash, prefix } = generateToken();
+    await db.apiToken.create({
+      data: { userId: user.id, label: 'logs', tokenHash: hash, prefix, canReadLogs: true, apps: { create: [{ appId: appIds.get('web') ?? '' }] } },
+    });
+    const outputs = async (bearer: string): Promise<[string, string | undefined][]> => {
+      const body = HostResponse.parse((await call(await connect(bearer), 'shipyard_host', {})).structuredContent);
+      return (body.hosts[0]?.inventory.containers ?? []).map((c) => [c.name, c.healthLog?.[0]?.output]);
+    };
+    expect(await outputs(token)).toEqual([
+      ['web-1', output],
+      ['pg', ''],
+      ['watchtower', ''],
+    ]);
+    expect(await outputs(await tokenFor('plain', ['web']))).toEqual([
+      ['web-1', ''],
+      ['pg', ''],
+      ['watchtower', ''],
+    ]);
+  });
+
   it('is listed read-only, with the console tier words in its description', async () => {
     const client = await connect(await tokenFor('a', ['other']));
     const { tools } = await client.listTools();

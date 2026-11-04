@@ -5,9 +5,12 @@ import type { Db, Prisma } from '../db.js';
 import type { ServiceDeps } from '../deps.js';
 import { sendRefusal } from '../errors.js';
 import { syncContainerConditions } from './conditions.js';
+import { foldContainerHealth } from './history.js';
+import { withProbeOutputFor } from './probe-output.js';
 
 export * from './conditions.js';
 export * from './history.js';
+export * from './probe-output.js';
 
 /**
  * The host inventory, server side (SHP-ADR-009, SHP-T-14.5): the latest `HostInventory` each agent
@@ -28,9 +31,10 @@ export const HOST_SAMPLES_PER_CONTAINER = 500;
 
 /**
  * Replaces `agentId`'s stored inventory with `inventory`, appends one sample per container that
- * reported stats, prunes that agent's samples older than the window, and brings its container
- * conditions in line (SHP-ADR-013) — in one transaction, so a reader never sees a snapshot without
- * its samples or its conditions.
+ * reported stats, prunes that agent's samples older than the window, brings its container
+ * conditions in line and folds each container's health into its 30-minute bucket (SHP-ADR-013,
+ * SHP-REQ-223) — in one transaction, so a reader never sees a snapshot without its samples, its
+ * conditions or its health history. Probe output stays in the snapshot alone (SHP-REQ-224).
  *
  * A sample is stamped with the server's receipt time, not the agent's `sampledAt`: the window is
  * pruned on the server's clock, and a skewed agent clock must not order points out of sequence or
@@ -52,6 +56,7 @@ export async function storeHostInventory(db: Db, agentId: string, inventory: Hos
     if (samples.length > 0) await tx.hostSample.createMany({ data: samples });
     await tx.hostSample.deleteMany({ where: { agentId, at: { lt: new Date(now.getTime() - HOST_SAMPLE_WINDOW_MS) } } });
     await syncContainerConditions(tx, agentId, inventory.containers, now);
+    await foldContainerHealth(tx, agentId, inventory.containers, now);
   });
 }
 
@@ -143,7 +148,8 @@ export async function snapshotContainers(db: Db): Promise<SnapshotContainer[]> {
  * Mounted at /api/host (SHP-REQ-179, SHP-REQ-181). GET only: any signed-in user, whatever the role,
  * and any API token, whatever its app scope — the host is not an app, and what it shows is what
  * Docker shows anyone on the box. An agent's signed request is not a reader. Any other method falls
- * through to the app's 404: there is no write path here.
+ * through to the app's 404: there is no write path here. Health-check output is blanked for a
+ * caller who may not read the container's logs (SHP-ADR-011, `withProbeOutputFor`).
  */
 export function hostRouter(deps: ServiceDeps): Router {
   const { db, logger } = deps;
@@ -155,7 +161,8 @@ export function hostRouter(deps: ServiceDeps): Router {
       sendRefusal(res, refusal('unauthenticated', 'You are not signed in.'));
       return;
     }
-    res.json(await readHostSnapshots(db, logger));
+    const caller = { actor: req.actor, role: req.role, tokenApps: req.tokenApps, tokenStacks: req.tokenStacks };
+    res.json(await withProbeOutputFor(deps, caller, await readHostSnapshots(db, logger)));
   });
 
   return router;
