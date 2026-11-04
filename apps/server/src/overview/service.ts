@@ -12,7 +12,7 @@ import {
   type ProjectChip,
 } from '@shipyard/schema';
 import type { Db } from '../db.js';
-import { readContainerConditions, type ContainerConditionRow } from '../host/index.js';
+import { readContainerConditions, readRestartLoops, restartLoopKey, type ContainerConditionRow, type RestartLoop } from '../host/index.js';
 import { lastChangeOf } from '../incident/service.js';
 
 /**
@@ -20,8 +20,9 @@ import { lastChangeOf } from '../incident/service.js';
  * happening now, what ended in the last 24 hours, a tile per Deployed app, a chip per other compose
  * project and one incident banner per Deployed or Operated app with a failing container.
  *
- * Reads only. The host half comes from each agent's latest stored snapshot and from
- * `container_condition` (kept by the agent's report); the work half from the ledger tables. Needs
+ * Reads only. The host half comes from each agent's latest stored snapshot, from
+ * `container_condition` (kept by the agent's report) and from restart loops computed from
+ * `container_event` (SHP-REQ-227); the work half from the ledger tables. Needs
  * you is not here: the console derives it from the shared store it already has (SHP-REQ-208).
  */
 
@@ -266,6 +267,28 @@ function projectChips(reported: readonly Reported[], failing: ReadonlySet<string
   return chips.sort((a, b) => byCodePoint(a.project, b.project));
 }
 
+/**
+ * Every failing container, oldest first: its stored condition, unless a restart loop outranks it
+ * (SHP-REQ-227). Loops are read only for Deployed and Operated containers — an Observed one has no
+ * banner — over the last 30 minutes of their events.
+ */
+async function failingConditions(db: Db, reported: readonly Reported[], conditions: readonly ContainerConditionRow[], now: Date): Promise<ContainerConditionRow[]> {
+  const owned = reported.filter((r) => r.container.tier === 'shipped' || r.container.tier === 'operated');
+  const loops: Map<string, RestartLoop> = await readRestartLoops(
+    db,
+    owned.map((r) => ({ agentId: r.agentId, containerName: r.container.name })),
+    now,
+  );
+  const merged = new Map<string, ContainerConditionRow>();
+  for (const row of conditions) merged.set(key(row.agentId, row.containerName), row);
+  for (const r of owned) {
+    const loop = loops.get(restartLoopKey(r.agentId, r.container.name));
+    if (loop === undefined) continue;
+    merged.set(key(r.agentId, r.container.name), { agentId: r.agentId, containerName: r.container.name, condition: 'restart-loop', since: loop.since });
+  }
+  return [...merged.values()].sort((a, b) => a.since.getTime() - b.since.getTime() || byCodePoint(a.containerName, b.containerName));
+}
+
 /** One banner per Deployed app or Operated stack with a failing container; an Observed one has none. */
 async function incidentBanners(db: Db, reported: readonly Reported[], conditions: readonly ContainerConditionRow[]): Promise<IncidentBanner[]> {
   const containers = new Map<string, HostContainer>();
@@ -318,7 +341,7 @@ async function incidentBanners(db: Db, reported: readonly Reported[], conditions
 /** `GET /api/overview`'s body. Reads only; `now` is a parameter so tests can fix the clock. */
 export async function buildOverview(db: Db, now: Date = new Date()): Promise<Overview> {
   const since = new Date(now.getTime() - DAY_MS);
-  const [snapshots, conditions, apps, stackCount, inFlight, last24h] = await Promise.all([
+  const [snapshots, stored, apps, stackCount, inFlight, last24h] = await Promise.all([
     readSnapshots(db),
     readContainerConditions(db),
     db.app.findMany({ where: { retiredAt: null }, select: { id: true, name: true } }),
@@ -327,6 +350,7 @@ export async function buildOverview(db: Db, now: Date = new Date()): Promise<Ove
     readLast24h(db, since),
   ]);
   const { reported } = snapshots;
+  const conditions = await failingConditions(db, reported, stored, now);
   const failing = new Set(conditions.map((c) => key(c.agentId, c.containerName)));
   const isFailing = (r: Reported): boolean => failing.has(key(r.agentId, r.container.name));
 

@@ -38,7 +38,7 @@ import {
   type DeployCaller,
 } from '../deploys/service.js';
 import { getGroupDeployStatus, waitForGroupChange } from '../groups/service.js';
-import { readHostSnapshots, snapshotContainers } from '../host/index.js';
+import { readHostSnapshots, snapshotContainers, withProbeOutputFor } from '../host/index.js';
 import { buildIncidentBundle } from '../incident/index.js';
 import { logsViewerOf, readLogsTail } from '../logs/service.js';
 import {
@@ -450,7 +450,8 @@ export function buildMcpServer(
       annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
     },
     async () => {
-      const { hosts } = await readHostSnapshots(deps.db, deps.logger);
+      // Health-check output only for a token that may read that container's logs (SHP-ADR-011).
+      const { hosts } = await withProbeOutputFor(deps, caller, await readHostSnapshots(deps.db, deps.logger));
       return ok({
         hosts: hosts.map((host) => ({
           ...host,

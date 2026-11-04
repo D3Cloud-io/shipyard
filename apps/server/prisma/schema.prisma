@@ -251,6 +251,8 @@ model Agent {
   maintenanceJobs MaintenanceJob[]
   volumeArchives  VolumeArchive[]
   containerConditions ContainerCondition[]
+  containerEvents     ContainerEvent[]
+  containerHealth     ContainerHealth[]
 
   @@map("agent")
 }
@@ -306,6 +308,56 @@ model ContainerCondition {
 
   @@id([agentId, containerName])
   @@map("container_condition")
+}
+
+/// One Engine event an agent reported (SHP-ADR-013; SHP-REQ-217, SHP-REQ-222): start, die, oom,
+/// health_status or restart, at the Engine's time. Kept 30 days by the container-history prune. A
+/// report re-sent after a failure repeats its events, so (agent, container, kind, time) is unique
+/// and inserts skip duplicates. Holds no probe or log output of any kind (SHP-REQ-224).
+model ContainerEvent {
+  id            String   @id @default(uuid()) @db.Uuid
+  agentId       String   @map("agent_id") @db.Uuid
+  /// The 64-hex container ID the event carried.
+  containerId   String   @map("container_id")
+  containerName String   @map("container_name")
+  /// `ContainerEventKind`.
+  kind          String
+  /// The Engine's time for the event (`timeNano`).
+  at            DateTime @db.Timestamptz(3)
+  /// Set on `die`.
+  exitCode      Int?     @map("exit_code")
+  /// Set on `health_status`: healthy, unhealthy or starting.
+  health        String?
+  /// When the server received it (the server's clock).
+  receivedAt    DateTime @map("received_at") @db.Timestamptz(3)
+
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@unique([agentId, containerId, kind, at])
+  @@index([agentId, containerName, at])
+  @@index([at])
+  @@map("container_event")
+}
+
+/// One container's health over one 30-minute bucket (SHP-ADR-013; SHP-REQ-223), folded on every
+/// report by `storeHostInventory`: the worst health seen and how many health checks failed. Kept 7
+/// days by the container-history prune. Holds no probe output (SHP-REQ-224).
+model ContainerHealth {
+  agentId        String    @map("agent_id") @db.Uuid
+  containerName  String    @map("container_name")
+  /// The bucket's start, floored to 30 minutes UTC, by the server's clock.
+  bucketStart    DateTime  @map("bucket_start") @db.Timestamptz(3)
+  /// unhealthy, starting, healthy or none: the worst reported in the bucket.
+  worstHealth    String    @map("worst_health")
+  failedChecks   Int       @default(0) @map("failed_checks")
+  /// The newest health-check start already counted, so a check reported twice counts once.
+  lastProbeStart DateTime? @map("last_probe_start") @db.Timestamptz(3)
+
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@id([agentId, containerName, bucketStart])
+  @@index([bucketStart])
+  @@map("container_health")
 }
 
 // ─── Apps (read-only mirror written only by agent reports) ────────────────
