@@ -164,6 +164,24 @@ describe('GET /api/host/resources (SHP-T-20.4)', () => {
     expect(Date.parse(host?.spikes[0]?.from ?? '')).toBe(NOW - 60_000);
   });
 
+  it('finds a spike exactly on the line, where Postgres and JavaScript medians differ in the last bit', async () => {
+    // An even series whose JS median is one ulp below percentile_cont's: the pre-filter must still let it through.
+    await seedSnapshot(agentId, inventory([container('edge', { cpuPercent: 124.24751961588437, memoryBytes: 1, memoryLimitBytes: null })]));
+    await seedSamples(agentId, 'edge', [1, 1, 1.8671268570928934, 47.83188098926085, 124.24751961588437, 124.24751961588437]);
+    const host = (await read(await signIn('viewer'))).hosts[0];
+    expect(host?.spikes.map((s) => [s.containerName, s.samples, s.ongoing])).toEqual([['edge', 2, true]]);
+  });
+
+  it('works out the median from the last 24 hours only', async () => {
+    // In the window the median is 20 and 90 is not above 5×; with the day-old 1s counted it would be.
+    await seedSnapshot(agentId, inventory([container('steady', { cpuPercent: 90, memoryBytes: 1, memoryLimitBytes: null })]));
+    await seedSamples(agentId, 'steady', [20, 20, 20, 90, 90]);
+    await db.hostSample.createMany({
+      data: [1, 2, 3, 4, 5].map((i) => ({ agentId, containerName: 'steady', at: new Date(NOW - 25 * 3_600_000 - i * 60_000), cpuPercent: 1, memoryBytes: 1n })),
+    });
+    expect((await read(await signIn('viewer'))).hosts[0]?.spikes).toEqual([]);
+  });
+
   it('reports null cores and memory for a snapshot from an older agent', async () => {
     await seedSnapshot(agentId, inventory([container('pg', { cpuPercent: 1.5, memoryBytes: 64 * MiB, memoryLimitBytes: null })]));
     const host = (await read(await signIn('admin'))).hosts[0];

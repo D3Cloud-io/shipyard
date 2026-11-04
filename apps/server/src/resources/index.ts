@@ -35,7 +35,12 @@ export async function readResources(deps: Pick<ServiceDeps, 'db' | 'logger'>, no
  * `SPIKE_MIN_SAMPLES` samples over the spike line, so a quiet host reads a handful of rows instead
  * of every container's 24 hours (about 127,000 at 88 containers). `findSpike` then decides on the
  * full series exactly as before; the filter is a necessary condition, never a different rule.
+ * Postgres's `percentile_cont` and `median` can differ in the last bit of an even series' median,
+ * so the line is lowered by `PREFILTER_SLACK`: the filter may let a container through, never keep one out.
  */
+/** How far below the spike line the pre-filter looks, as a fraction (see `readSamples`). */
+const PREFILTER_SLACK = 1e-9;
+
 async function readSamples(db: Db, agentId: string, since: Date): Promise<Map<string, CpuSample[]>> {
   const candidates = await db.$queryRaw<{ container_name: string }[]>`
     WITH m AS (
@@ -47,7 +52,7 @@ async function readSamples(db: Db, agentId: string, since: Date): Promise<Map<st
     FROM host_sample s JOIN m ON m.container_name = s.container_name
     WHERE s.agent_id = ${agentId}::uuid AND s.at >= ${since}
       AND m.n >= ${SPIKE_MIN_HISTORY}
-      AND s.cpu_percent > ${SPIKE_MEDIAN_FACTOR} * m.med
+      AND s.cpu_percent > ${SPIKE_MEDIAN_FACTOR * (1 - PREFILTER_SLACK)}::float8 * m.med
       AND s.cpu_percent >= ${SPIKE_NOISE_FLOOR_PERCENT}
     GROUP BY s.container_name
     HAVING count(*) >= ${SPIKE_MIN_SAMPLES}`;
