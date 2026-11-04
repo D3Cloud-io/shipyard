@@ -370,7 +370,7 @@ export function mountReport(router: Router, deps: ServiceDeps): void {
     // transaction for the same reason. Absent (an agent older than SHP-P-20) records nothing.
     if (report.events !== undefined || report.droppedEvents !== undefined) {
       try {
-        await storeContainerEvents(db, agentId, report.events ?? [], report.droppedEvents ?? 0, now);
+        await storeContainerEvents(db, agentId, report.events ?? [], report.droppedEvents ?? 0, now, logger);
       } catch (err) {
         logger.error({ err, agentId }, 'storing container events failed');
       }
