@@ -1,15 +1,16 @@
 # Host: what the agent reports and what the server keeps
 
 The agent reports on the Docker host so the console can show what runs there, and the server keeps
-part of that for a limited time (SHP-ADR-009 as amended by SHP-ADR-013, SHP-P-20). The agent reads
-the local Docker Engine API only, read-only, with no new mounts, and opens no port. This page says
+part of that for a limited time (SHP-ADR-009 as amended by SHP-ADR-013, SHP-P-20). What it reports
+it reads from the local Docker Engine API only, read-only, with no new mounts, and it opens no port.
+(Deploys, lifecycle verbs and prunes are separate, gated acts; this page is about reporting.) This page says
 what it reports, what the server keeps and for how long, and the one rule that holds throughout:
 **health-check output never enters history** (SHP-REQ-224).
 
 | Act | Who | Where |
 |---|---|---|
-| Open Host and Resources | any signed-in role; any API token (read-only) | Host (`/host`), Host › Resources, `GET /api/host` |
-| Read a container's health-check output | admin or operator; a "can read logs" token whose owner is still one, scoped to the container's app or stack | container sheet, Host |
+| Read the host inventory and resource use | any signed-in role; any API token (read-only) | Host (`/host`), `GET /api/host`, `GET /api/host/resources`, `shipyard_host` |
+| Read a container's health-check output | admin or operator; a "can read logs" token whose owner is still one, scoped to the container's app or stack | `GET /api/host`, `shipyard_host`, the incident bundle |
 | Read an incident bundle | see `incidents.md` | container sheet › Copy for Claude, `shipyard_incident` |
 
 ## What the agent reports
@@ -37,7 +38,9 @@ so a restart between two reports is not lost (SHP-REQ-217).
 
 For a container that is unhealthy or starting, the agent reports its **last five health-check
 results** (`State.Health.Log`). They are redacted on the agent exactly as logs are (SHP-ADR-011,
-SHP-REQ-220), and each is cut to 4 KiB. The server never sees an unredacted line.
+SHP-REQ-220), and each is cut to 4,096 characters after redaction. Docker itself keeps at most
+4,096 bytes of a probe's output; when it cut through a secret, the agent drops the part of the secret
+left at the end before redacting. The server never sees an unredacted line.
 
 ### Exit state
 
@@ -49,8 +52,9 @@ For each container: its last exit code, whether it was OOM-killed, and its resta
 CPU core count and total memory, from the Engine's `/info` (SHP-REQ-221).
 
 Load average and page cache are **not collected**: they need a `/proc` mount, which SHP-ADR-009
-rules out. Host › Resources says "in containers" for what it shows and links to Grafana for the
-rest.
+rules out. Resource use is therefore "in containers", and the rest stays in Grafana. The console's
+Host › Resources tab, which shows it that way and links to Grafana, arrives with SHP-T-20.6; until
+then `GET /api/host/resources` serves the numbers.
 
 ### What it never reports
 
@@ -86,8 +90,9 @@ Anyone else sees the results (pass or fail, and when) with the output blanked.
 
 ## Restart loops and incident bundles
 
-Three restarts of a Deployed or Operated container within 15 minutes show as a **restart loop** on
-its app's incident banner on Overview (SHP-REQ-227).
+Three restarts of a Deployed or Operated container within 15 minutes — a restart is a `start` that
+follows a `die` — make its condition **restart-loop** in `GET /api/overview`'s incident banners and
+in the incident bundle (SHP-REQ-227). The console words it "Restart loop" from SHP-T-20.6.
 
 The incident bundle gains the container's events of the last 24 hours, its latest health-check
 results, its exit code, whether it was OOM-killed and its restart policy (SHP-REQ-228). A bundle is
@@ -100,6 +105,7 @@ report object is strict and a server that does not know the new fields refuses a
 report. Then upgrade the agent from `upgrade-agent.md`, with `--no-deps`.
 
 An agent older than SHP-P-20 keeps working. Its reports lack events, probe results, exit state and
-host totals, and those parts of the console say "not reported".
+host totals: the API leaves those fields out (or `null` on Resources and in the bundle), and no
+events or health buckets are kept for it.
 
 Related: SHP-ADR-009, SHP-ADR-011, SHP-ADR-013, `incidents.md`.
