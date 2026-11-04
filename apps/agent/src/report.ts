@@ -5,6 +5,7 @@ import {
   type AgentBuildCache,
   type AgentReport,
   type AgentStackService,
+  type ContainerEvent,
   type HostInventory,
   type Manifest,
   type StackManifest,
@@ -41,6 +42,9 @@ import type { AgentClient } from './client.js';
  *
  * And the volume archives in the ledger (SHP-REQ-201, SHP-ADR-012), every live one, with no path:
  * the server lists them and a restore names one by ID for the agent to resolve itself.
+ *
+ * And the Engine events since the last report the server accepted (SHP-T-20.2, SHP-REQ-217), with
+ * the count of any the buffer had to drop (SHP-REQ-219).
  */
 
 /** The schema's cap on `volumeArchives`. */
@@ -76,6 +80,12 @@ export interface ReportPorts {
    * undefined: the stack is reported without `services`.
    */
   stackServices?: (stack: StackManifest) => Promise<Record<string, AgentStackService> | undefined>;
+  /**
+   * The Engine events buffered since the last accepted report and how many were dropped
+   * (SHP-T-20.2, SHP-REQ-217, SHP-REQ-219). Taken last, so the report carries the newest; they stay
+   * buffered until the report is accepted. Absent: the report carries neither key.
+   */
+  events?: { take(): { events: ContainerEvent[]; droppedEvents: number } };
   log?: ReportLog;
 }
 
@@ -186,6 +196,7 @@ export async function buildReport(ports: ReportPorts, dataRoot: string, versions
   const archives = releases === undefined ? undefined : ports.ledger?.volumeArchives?.().slice(-MAX_REPORTED_ARCHIVES).map(toVolumeArchive);
   const buildCache = ports.buildCache?.();
   const host = await hostInventory(ports, loaded, stacks);
+  const events = ports.events?.take();
   return {
     agentVersion: versions.agentVersion,
     composeVersion: await composeVersion(ports.docker, loaded),
@@ -198,6 +209,7 @@ export async function buildReport(ports: ReportPorts, dataRoot: string, versions
     ...(archives === undefined ? {} : { volumeArchives: archives }),
     ...(buildCache === undefined ? {} : { buildCache }),
     ...(host === undefined ? {} : { host }),
+    ...(events === undefined ? {} : { events: events.events, droppedEvents: events.droppedEvents }),
   };
 }
 
@@ -306,6 +318,11 @@ export interface ReportingOptions {
   checkMs?: number;
   /** The manifests' combined hash as it is on disk now; a change sends a report at once. */
   currentHash?: () => Promise<string>;
+  /**
+   * Called with a report the server accepted (a 2xx), so what it carried once can be let go: the
+   * Engine events (SHP-REQ-219). Never called for a report that failed.
+   */
+  accepted?: (report: AgentReport) => void;
   log?: ReportLog;
 }
 
@@ -336,6 +353,7 @@ export function startReporting(
       const report = await build();
       await client.request('POST', '/api/agent/report', report);
       lastHash = reportHash(report);
+      opts.accepted?.(report);
     } catch (err) {
       opts.log?.warn({ err }, 'agent report failed');
     }
