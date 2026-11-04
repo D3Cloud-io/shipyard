@@ -204,8 +204,9 @@ describe('health buckets (SHP-REQ-223)', () => {
     const early = [probe('2026-11-04T09:59:00.000Z', 1), probe('2026-11-04T10:04:00.000Z', 1), probe('2026-11-04T10:04:30.000Z', 0)];
     await storeHostInventory(db, agentId, inventory([{ ...WEB, health: 'starting', healthLog: early }, quiet]), T0);
     let buckets = await readHealthBuckets(db, agentId);
-    // The 09:59 check belongs to the previous bucket, so only the 10:04 failure counts here.
+    // The 09:59 check belongs to the previous bucket, so it is counted there and only the 10:04 failure here.
     expect(buckets).toEqual([
+      { containerName: 'web-1', bucketStart: new Date('2026-11-04T09:30:00.000Z'), worstHealth: 'none', failedChecks: 1 },
       { containerName: 'quiet', bucketStart: new Date('2026-11-04T10:00:00.000Z'), worstHealth: 'none', failedChecks: 0 },
       { containerName: 'web-1', bucketStart: new Date('2026-11-04T10:00:00.000Z'), worstHealth: 'starting', failedChecks: 1 },
     ]);
@@ -215,13 +216,30 @@ describe('health buckets (SHP-REQ-223)', () => {
     // The same checks again, and the container healthy: nothing counted twice, the worst kept.
     await storeHostInventory(db, agentId, inventory([{ ...WEB, health: 'healthy', healthLog: later }, quiet]), new Date(T0.getTime() + 2 * MIN));
     buckets = await readHealthBuckets(db, agentId);
-    expect(buckets.find((b) => b.containerName === 'web-1')).toMatchObject({ worstHealth: 'unhealthy', failedChecks: 2 });
+    expect(buckets.find((b) => b.containerName === 'web-1' && b.bucketStart.toISOString() === '2026-11-04T10:00:00.000Z')).toMatchObject({ worstHealth: 'unhealthy', failedChecks: 2 });
 
     await storeHostInventory(db, agentId, inventory([{ ...WEB, health: 'healthy', healthLog: [] }, quiet]), new Date('2026-11-04T10:31:00.000Z'));
     buckets = await readHealthBuckets(db, agentId);
     expect(buckets.filter((b) => b.containerName === 'web-1')).toEqual([
+      { containerName: 'web-1', bucketStart: new Date('2026-11-04T09:30:00.000Z'), worstHealth: 'none', failedChecks: 1 },
       { containerName: 'web-1', bucketStart: new Date('2026-11-04T10:00:00.000Z'), worstHealth: 'unhealthy', failedChecks: 2 },
       { containerName: 'web-1', bucketStart: new Date('2026-11-04T10:30:00.000Z'), worstHealth: 'healthy', failedChecks: 0 },
+    ]);
+  });
+
+  it('counts a check that started before a boundary but first appears in the next report, in its own bucket', async () => {
+    // Probes every 30 s, reports every 60 s, all failing: four checks start in the 10:00 bucket's last two minutes.
+    const at = (t: string): string => `2026-11-04T${t}.000Z`;
+    const first = [probe(at('10:28:05'), 1), probe(at('10:28:35'), 1), probe(at('10:29:05'), 1)];
+    await storeHostInventory(db, agentId, inventory([{ ...WEB, health: 'unhealthy', healthLog: first }]), new Date(at('10:29:10')));
+    const second = [...first, probe(at('10:29:35'), 1), probe(at('10:30:05'), 1)].slice(-5);
+    await storeHostInventory(db, agentId, inventory([{ ...WEB, health: 'unhealthy', healthLog: second }]), new Date(at('10:30:10')));
+    // Re-sent: nothing changes.
+    await storeHostInventory(db, agentId, inventory([{ ...WEB, health: 'unhealthy', healthLog: second }]), new Date(at('10:30:40')));
+    const buckets = (await readHealthBuckets(db, agentId)).filter((b) => b.containerName === 'web-1');
+    expect(buckets).toEqual([
+      { containerName: 'web-1', bucketStart: new Date(at('10:00:00')), worstHealth: 'unhealthy', failedChecks: 4 },
+      { containerName: 'web-1', bucketStart: new Date(at('10:30:00')), worstHealth: 'unhealthy', failedChecks: 1 },
     ]);
   });
 });

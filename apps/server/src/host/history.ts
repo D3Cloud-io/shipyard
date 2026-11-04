@@ -1,6 +1,6 @@
 import type { ContainerEvent, ContainerHealth, HostContainer } from '@shipyard/schema';
 import type { Logger } from 'pino';
-import type { Db, Prisma } from '../db.js';
+import { Prisma, type Db } from '../db.js';
 
 /**
  * Container history (SHP-ADR-013): the Engine events an agent reports, kept 30 days in
@@ -64,24 +64,19 @@ export async function storeContainerEvents(
   });
 }
 
-/** Worst first is highest: a bucket keeps the highest rank it has seen. */
-const HEALTH_RANK: Record<ContainerHealth, number> = { none: 0, healthy: 1, starting: 2, unhealthy: 3 };
-
-function worse(a: string, b: ContainerHealth): ContainerHealth {
-  const known = a in HEALTH_RANK ? (a as ContainerHealth) : 'none';
-  return HEALTH_RANK[b] > HEALTH_RANK[known] ? b : known;
-}
-
 /** The start of the 30-minute UTC bucket `at` falls in. */
 export function healthBucketOf(at: Date): Date {
   return new Date(Math.floor(at.getTime() / HEALTH_BUCKET_MS) * HEALTH_BUCKET_MS);
 }
 
 /**
- * Folds every container's health into its bucket for `now`, inside the caller's transaction: the
- * worse of the stored and the reported health, plus the failed checks (`exitCode !== 0`) in its
- * health log that started in the bucket after the newest check already counted. Writes only rows
- * that change, so a steady container costs one read per report for the whole inventory.
+ * Folds every container's health into the health buckets, inside the caller's transaction, in one
+ * statement. The bucket for `now` takes the worse of the stored and the reported health. Each failed
+ * check (`exitCode !== 0`) not counted before goes into the bucket its own start falls in — the
+ * current one or the one before, since a report can first show a check that started before a
+ * boundary — so none is lost or counted twice (SHP-REQ-223). "Counted before" is the newest check
+ * start stored on the container's current or previous bucket, so the watermark crosses boundaries.
+ * The database keeps the worse health and the newer watermark, so a re-sent report changes nothing.
  */
 export async function foldContainerHealth(
   tx: Prisma.TransactionClient,
@@ -90,42 +85,53 @@ export async function foldContainerHealth(
   now: Date,
 ): Promise<void> {
   if (containers.length === 0) return;
-  const bucketStart = healthBucketOf(now);
-  const bucketEnd = bucketStart.getTime() + HEALTH_BUCKET_MS;
-  const stored = new Map(
-    (await tx.containerHealth.findMany({ where: { agentId, bucketStart } })).map((r) => [r.containerName, r] as const),
-  );
+  const current = healthBucketOf(now);
+  const previous = new Date(current.getTime() - HEALTH_BUCKET_MS);
+  const watermarks = new Map<string, number>();
+  for (const r of await tx.containerHealth.findMany({
+    where: { agentId, bucketStart: { in: [previous, current] }, lastProbeStart: { not: null } },
+    select: { containerName: true, lastProbeStart: true },
+  })) {
+    const at = r.lastProbeStart?.getTime() ?? -Infinity;
+    if (at > (watermarks.get(r.containerName) ?? -Infinity)) watermarks.set(r.containerName, at);
+  }
 
-  const creates: Prisma.ContainerHealthCreateManyInput[] = [];
+  type Row = { name: string; bucket: Date; health: ContainerHealth; failed: number; lastProbe: Date | null };
+  const rows: Row[] = [];
   const seen = new Set<string>();
   for (const c of containers) {
     // Two containers of one name cannot both run; the first reported wins, as a snapshot reads.
     if (seen.has(c.name)) continue;
     seen.add(c.name);
-    const row = stored.get(c.name);
-    const watermark = row?.lastProbeStart?.getTime() ?? -Infinity;
-    let failed = 0;
+    const watermark = watermarks.get(c.name) ?? -Infinity;
     let newest = watermark;
+    let failedNow = 0;
+    let failedBefore = 0;
     for (const probe of c.healthLog ?? []) {
       const start = Date.parse(probe.start);
-      if (Number.isNaN(start) || start <= watermark || start < bucketStart.getTime() || start >= bucketEnd) continue;
-      if (probe.exitCode !== 0) failed += 1;
+      if (Number.isNaN(start) || start <= watermark || start < previous.getTime()) continue;
       if (start > newest) newest = start;
+      if (probe.exitCode === 0) continue;
+      if (start < current.getTime()) failedBefore += 1;
+      else failedNow += 1;
     }
-    const lastProbeStart = newest === watermark ? (row?.lastProbeStart ?? null) : new Date(newest);
-
-    if (row === undefined) {
-      creates.push({ agentId, containerName: c.name, bucketStart, worstHealth: c.health, failedChecks: failed, lastProbeStart });
-      continue;
-    }
-    const worstHealth = worse(row.worstHealth, c.health);
-    if (worstHealth === row.worstHealth && failed === 0 && lastProbeStart === row.lastProbeStart) continue;
-    await tx.containerHealth.update({
-      where: { agentId_containerName_bucketStart: { agentId, containerName: c.name, bucketStart } },
-      data: { worstHealth, failedChecks: { increment: failed }, lastProbeStart },
-    });
+    const lastProbe = newest === watermark ? null : new Date(newest);
+    rows.push({ name: c.name, bucket: current, health: c.health, failed: failedNow, lastProbe });
+    // `none` ranks lowest, so a late check never changes the earlier bucket's worst state.
+    if (failedBefore > 0) rows.push({ name: c.name, bucket: previous, health: 'none', failed: failedBefore, lastProbe: null });
   }
-  if (creates.length > 0) await tx.containerHealth.createMany({ data: creates, skipDuplicates: true });
+
+  // Worst first is highest: a bucket keeps the highest rank it has seen (none < healthy < starting < unhealthy).
+  const rank = (column: Prisma.Sql): Prisma.Sql =>
+    Prisma.sql`(CASE ${column} WHEN 'unhealthy' THEN 3 WHEN 'starting' THEN 2 WHEN 'healthy' THEN 1 ELSE 0 END)`;
+  await tx.$executeRaw`
+    INSERT INTO container_health (agent_id, container_name, bucket_start, worst_health, failed_checks, last_probe_start)
+    VALUES ${Prisma.join(rows.map((r) => Prisma.sql`(${agentId}::uuid, ${r.name}, ${r.bucket}, ${r.health}, ${r.failed}, ${r.lastProbe})`))}
+    ON CONFLICT (agent_id, container_name, bucket_start) DO UPDATE SET
+      worst_health = CASE WHEN ${rank(Prisma.sql`EXCLUDED.worst_health`)} > ${rank(Prisma.sql`container_health.worst_health`)}
+        THEN EXCLUDED.worst_health ELSE container_health.worst_health END,
+      failed_checks = container_health.failed_checks + EXCLUDED.failed_checks,
+      last_probe_start = GREATEST(container_health.last_probe_start, EXCLUDED.last_probe_start)`;
 }
 
 export interface HealthBucketRow {
