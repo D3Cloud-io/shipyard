@@ -7,6 +7,7 @@ import { sendRefusal } from '../errors.js';
 import { syncContainerConditions } from './conditions.js';
 
 export * from './conditions.js';
+export * from './history.js';
 
 /**
  * The host inventory, server side (SHP-ADR-009, SHP-T-14.5): the latest `HostInventory` each agent
