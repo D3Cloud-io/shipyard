@@ -1,0 +1,51 @@
+{
+  "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "name": "bindery-api-1",
+  "image": "ghcr.io/matdemers1/bindery/api:sha-0000000000000000000000000000000000000000",
+  "imageId": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "state": "running",
+  "health": "unhealthy",
+  "restartCount": 0,
+  "createdAt": "2026-10-21T12:00:00.000Z",
+  "startedAt": "2026-10-21T12:00:00.000Z",
+  "compose": {
+    "project": "bindery",
+    "service": "api"
+  },
+  "tier": "shipped",
+  "app": "bindery",
+  "ports": [
+    {
+      "privatePort": 8000,
+      "publicPort": 8080,
+      "protocol": "tcp",
+      "ip": "0.0.0.0"
+    }
+  ],
+  "mounts": [
+    {
+      "type": "volume",
+      "volume": "bindery_data",
+      "source": null,
+      "destination": "/data",
+      "readOnly": false
+    }
+  ],
+  "stats": {
+    "cpuPercent": 2.5,
+    "memoryBytes": 1048576,
+    "memoryLimitBytes": null
+  },
+  "healthLog": [
+    {
+      "start": "2026-11-04T10:00:00.000Z",
+      "end": "2026-11-04T10:00:01.200Z",
+      "exitCode": 1,
+      "output": "curl: (7) Failed to connect to localhost port 8080"
+    }
+  ],
+  "exitCode": 0,
+  "oomKilled": false,
+  "restartPolicy": "unless-stopped"
+}

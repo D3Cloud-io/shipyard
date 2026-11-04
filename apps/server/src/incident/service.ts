@@ -2,15 +2,15 @@ import { IncidentBundle, refusal, type HostContainer, type IncidentLogs, type La
 import type { Db } from '../db.js';
 import type { ServiceDeps } from '../deps.js';
 import type { DeployCaller } from '../deploys/service.js';
-import { readContainerConditions, snapshotContainers } from '../host/index.js';
+import { readBundleEvents, readContainerConditions, readRestartLoops, restartLoopKey, snapshotContainers } from '../host/index.js';
 import { MAX_TAIL_WAIT_MS, logsViewerOf, readLogsTail, tokenLogsScopeRefusal } from '../logs/service.js';
 import { firstErrorIndex, incidentFacts } from './facts.js';
 
 /**
  * One container's incident bundle, built on request (SHP-ADR-013; SHP-REQ-212, SHP-REQ-214,
- * SHP-REQ-215, SHP-REQ-216, SHP-REQ-243): the facts from fixed rules, its redacted logs since the
- * first error, its inspect state from the latest report (never its environment), and its owner's
- * last change. `GET /api/containers/:id/incident` and `shipyard_incident` both build it here.
+ * SHP-REQ-215, SHP-REQ-216, SHP-REQ-228, SHP-REQ-243): the facts from fixed rules, its redacted logs
+ * since the first error, its inspect state from the latest report (never its environment), its
+ * events in the last 24 hours, its latest health-check results, and its owner's last change. `GET /api/containers/:id/incident` and `shipyard_incident` both build it here.
  *
  * Who may read it is who may read the container's logs (SHP-ADR-011), because it carries them: an
  * admin or operator, or a `can_read_logs` token scoped to the container's app or stack. Nothing is
@@ -156,13 +156,21 @@ export async function buildIncidentBundle(
   const allLines: LogLine[] = Array.isArray(read) ? read : [];
   const logs: IncidentLogs = Array.isArray(read) ? { ...incidentLogsOf(read), unavailable: null } : { from: 'tail', lines: [], unavailable: read };
 
+  const now = options.now ?? new Date();
   const row = (await readContainerConditions(deps.db)).find((c) => c.agentId === agentId && c.containerName === container.name);
-  const condition = row === undefined ? null : { condition: row.condition, since: row.since };
+  const events = await readBundleEvents(deps.db, agentId, container.name, now);
+  // SHP-REQ-227: a restart loop outranks restarting and unhealthy, for Deployed and Operated only, as banners are.
+  const restartLoop =
+    container.tier === 'observed'
+      ? null
+      : ((await readRestartLoops(deps.db, [{ agentId, containerName: container.name }], now)).get(restartLoopKey(agentId, container.name)) ?? null);
+  const condition =
+    restartLoop !== null ? { condition: 'restart-loop' as const, since: restartLoop.since } : row === undefined ? null : { condition: row.condition, since: row.since };
   const lastChange = await lastChangeOf(deps.db, container);
-  const facts = incidentFacts({ container, condition, lines: allLines.slice(-INCIDENT_LOG_LINES), lastChange });
+  const facts = incidentFacts({ container, condition, restartLoop, events, lines: allLines.slice(-INCIDENT_LOG_LINES), lastChange });
 
   const bundle = IncidentBundle.parse({
-    builtAt: (options.now ?? new Date()).toISOString(),
+    builtAt: now.toISOString(),
     container: { id: container.id, name: container.name, tier: container.tier, owner: container.app, compose: container.compose },
     condition: condition?.condition ?? null,
     failingSince: condition?.since.toISOString() ?? null,
@@ -178,7 +186,13 @@ export async function buildIncidentBundle(
       memoryBytes: container.stats?.memoryBytes ?? null,
       memoryLimitBytes: container.stats?.memoryLimitBytes ?? null,
       cpuPercent: container.stats?.cpuPercent ?? null,
+      exitCode: container.exitCode ?? null,
+      oomKilled: container.oomKilled ?? null,
+      restartPolicy: container.restartPolicy ?? null,
     },
+    events,
+    // From the latest report only: history never holds probe output (SHP-REQ-224).
+    probes: container.healthLog ?? [],
     logs,
     lastChange,
   });

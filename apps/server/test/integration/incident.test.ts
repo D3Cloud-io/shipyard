@@ -259,6 +259,10 @@ describe('the bundle', () => {
       memoryBytes: 800,
       memoryLimitBytes: 1000,
       cpuPercent: 12.5,
+      // An agent older than SHP-P-20 reports no exit state.
+      exitCode: null,
+      oomKilled: null,
+      restartPolicy: null,
     });
     expect(JSON.stringify(bundle.inspect)).not.toMatch(/env/i);
     expect(bundle.lastChange).toMatchObject({ kind: 'deploy', at: DEPLOYED_AT.toISOString(), state: 'succeeded', sha: SHA, digest: null });

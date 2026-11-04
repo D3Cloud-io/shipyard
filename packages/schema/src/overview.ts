@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 import { LogLine } from './actions.js';
 import { Refusal } from './errors.js';
-import { ContainerHealth, ContainerState, ContainerTier, HostDisk } from './host.js';
+import { ContainerEvent, ContainerHealth, ContainerState, ContainerTier, HealthCheckResult, HostDisk, RestartPolicy } from './host.js';
 import { AppName, Digest, Sha40 } from './primitives.js';
 
 /**
@@ -24,10 +24,13 @@ const Bytes = z.int().min(0);
 const Count = z.int().min(0);
 const Instant = z.iso.datetime({ offset: true });
 
-/** Why a container is failing. SHP-P-20 adds `restart-loop` once the server keeps events. */
+/**
+ * Why a container is failing: its healthcheck, Docker restarting it, or a restart loop — three
+ * restarts within 15 minutes, from the events the server keeps (SHP-REQ-227).
+ */
 export const IncidentCondition = z
-  .enum(['unhealthy', 'restarting'])
-  .meta({ id: 'IncidentCondition', description: 'Why a container is failing: its healthcheck, or Docker restarting it' });
+  .enum(['unhealthy', 'restarting', 'restart-loop'])
+  .meta({ id: 'IncidentCondition', description: 'Why a container is failing: its healthcheck, Docker restarting it, or a restart loop' });
 export type IncidentCondition = z.infer<typeof IncidentCondition>;
 
 /**
@@ -173,7 +176,7 @@ export type Overview = z.infer<typeof Overview>;
 /** A fact Shipyard can state from a fixed rule (SHP-REQ-216). Never a model's guess. */
 export const IncidentFact = z
   .strictObject({
-    kind: z.enum(['failing', 'restarts', 'log-error', 'memory', 'last-change', 'state']),
+    kind: z.enum(['failing', 'restarts', 'restart-loop', 'log-error', 'memory', 'last-change', 'state', 'exit', 'oom', 'probe']),
     /** When it happened; null for a standing fact such as memory against its limit. */
     at: Instant.nullable(),
     text: z.string().min(1).max(500),
@@ -194,6 +197,10 @@ export const IncidentInspect = z
     memoryBytes: Bytes.nullable(),
     memoryLimitBytes: Bytes.nullable(),
     cpuPercent: z.number().min(0).nullable(),
+    /** The last exit code, whether it was OOM-killed, and its restart policy (SHP-REQ-228); null when the agent does not report them. */
+    exitCode: z.int().nullable(),
+    oomKilled: z.boolean().nullable(),
+    restartPolicy: RestartPolicy.nullable(),
   })
   .meta({ id: 'IncidentInspect', description: "A container's state as the agent last reported it" });
 export type IncidentInspect = z.infer<typeof IncidentInspect>;
@@ -230,6 +237,10 @@ export const IncidentBundle = z
     /** In time order, undated facts last. */
     facts: z.array(IncidentFact).max(100),
     inspect: IncidentInspect,
+    /** Its events in the last 24 hours, oldest first (SHP-REQ-228). */
+    events: z.array(ContainerEvent).max(500),
+    /** Its latest health-check results, redacted, from the latest report only (SHP-REQ-224). */
+    probes: z.array(HealthCheckResult).max(5),
     logs: IncidentLogs,
     lastChange: LastChange.nullable(),
   })

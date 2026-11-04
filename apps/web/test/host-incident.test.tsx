@@ -114,7 +114,12 @@ function bundle(overrides: Partial<IncidentBundle> = {}): IncidentBundle {
       memoryBytes: null,
       memoryLimitBytes: null,
       cpuPercent: null,
+      exitCode: 0,
+      oomKilled: false,
+      restartPolicy: 'unless-stopped',
     },
+    events: [],
+    probes: [],
     logs: {
       from: 'first-error',
       lines: [

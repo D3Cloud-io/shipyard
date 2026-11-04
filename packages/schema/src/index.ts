@@ -9,6 +9,7 @@ export * from './stack-updates.js';
 export * from './maintenance.js';
 export * from './overview.js';
 export * from './incident-render.js';
+export * from './resources.js';
 export * from './agent.js';
 export * from './api.js';
 export * from './mcp.js';

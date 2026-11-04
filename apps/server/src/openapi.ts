@@ -787,6 +787,14 @@ function buildPaths(): Record<string, unknown> {
         responses: { '200': jsonResponse('The Overview, built from the latest reports and the ledger.', 'Overview'), '4XX': ERROR_RESPONSE },
       },
     },
+    '/host/resources': {
+      get: {
+        summary: "Host › Resources (SHP-ADR-013): containers' CPU and memory against the host's cores and memory, the heaviest containers, those over 70% of a memory limit, and spikes; computed on read (any signed-in role, any token)",
+        operationId: 'getHostResources',
+        security: [{ session: [] }, { bearer: [] }],
+        responses: { '200': jsonResponse('Resource use on every reporting host.', 'ResourcesResponse'), '4XX': ERROR_RESPONSE },
+      },
+    },
     '/containers/{id}/incident': {
       get: {
         summary: "One container's incident bundle (SHP-ADR-013): facts, redacted logs since the first error, inspect state without env, the last change. Built on request, never stored, audited (admin or operator; a token with can_read_logs scoped to the owner)",

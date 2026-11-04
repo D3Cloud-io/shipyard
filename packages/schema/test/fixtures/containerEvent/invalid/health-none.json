@@ -1,0 +1,8 @@
+{
+  "kind": "health_status",
+  "at": "2026-11-04T10:02:00.000Z",
+  "containerId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "containerName": "bindery-worker-1",
+  "exitCode": null,
+  "health": "none"
+}

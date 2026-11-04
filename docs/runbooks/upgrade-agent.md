@@ -114,3 +114,5 @@ something to roll back to). Watch the agent's startup log for the recovery resul
 reports an error rather than a clean roll-back, check that app's `status` and resolve any drift
 before deploying it again (`docs/runbooks/onboard-app.md` covers adopt-live / redeploy-recorded for
 drift in general).
+
+An agent upgrade that follows a protocol change (SHP-P-20) needs the server upgraded first; see `host.md`.

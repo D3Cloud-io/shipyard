@@ -1,0 +1,11 @@
+{
+  "containerName": "prometheus",
+  "tier": "observed",
+  "app": null,
+  "from": "2026-11-04T09:00:00.000Z",
+  "to": "2026-11-04T09:02:00.000Z",
+  "samples": 1,
+  "peakCpuPercent": 180.0,
+  "medianCpuPercent": 4.1,
+  "ongoing": false
+}

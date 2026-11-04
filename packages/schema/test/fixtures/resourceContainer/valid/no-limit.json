@@ -1,0 +1,10 @@
+{
+  "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "name": "penpot-frontend",
+  "tier": "shipped",
+  "app": "bindery",
+  "cpuPercent": 12.5,
+  "memoryBytes": 900000000,
+  "memoryLimitBytes": null,
+  "limitFraction": null
+}

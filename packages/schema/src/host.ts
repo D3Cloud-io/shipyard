@@ -83,6 +83,51 @@ export const ContainerStats = z
   .meta({ id: 'ContainerStats', description: "A container's sampled CPU and memory use" });
 export type ContainerStats = z.infer<typeof ContainerStats>;
 
+/** Docker's restart policy for a container (`HostConfig.RestartPolicy.Name`; Docker's empty name is `no`). */
+export const RestartPolicy = z
+  .enum(['no', 'always', 'unless-stopped', 'on-failure'])
+  .meta({ id: 'RestartPolicy', description: "The container's Docker restart policy" });
+export type RestartPolicy = z.infer<typeof RestartPolicy>;
+
+/**
+ * One health-check result (`State.Health.Log[]`), redacted on the agent exactly as logs are
+ * (SHP-ADR-011, SHP-REQ-220). Kept only on the latest snapshot, never in history (SHP-REQ-224).
+ */
+export const HealthCheckResult = z
+  .strictObject({
+    start: z.iso.datetime({ offset: true }),
+    /** Null while the check is still running. */
+    end: z.iso.datetime({ offset: true }).nullable(),
+    exitCode: z.int(),
+    /** The probe's output after redaction, cut to 4 KiB. */
+    output: z.string().max(4096),
+  })
+  .meta({ id: 'HealthCheckResult', description: 'One redacted health-check result' });
+export type HealthCheckResult = z.infer<typeof HealthCheckResult>;
+
+/** The Engine events the agent reports (SHP-REQ-217); the rest of `/events` is never read. */
+export const ContainerEventKind = z
+  .enum(['start', 'die', 'oom', 'health_status', 'restart'])
+  .meta({ id: 'ContainerEventKind', description: 'A container event the agent reports from the Engine' });
+export type ContainerEventKind = z.infer<typeof ContainerEventKind>;
+
+/** One Engine event, as the agent buffered it between reports (SHP-REQ-217). */
+export const ContainerEvent = z
+  .strictObject({
+    kind: ContainerEventKind,
+    /** The Engine's time for the event (`timeNano`), not the report's. */
+    at: z.iso.datetime({ offset: true }),
+    containerId: ContainerId,
+    /** The name without Docker's leading slash, as the event carried it. */
+    containerName: z.string().min(1).max(255),
+    /** Set on `die`; null otherwise. */
+    exitCode: z.int().nullable(),
+    /** Set on `health_status` (healthy, unhealthy or starting); null otherwise. */
+    health: ContainerHealth.exclude(['none']).nullable(),
+  })
+  .meta({ id: 'ContainerEvent', description: 'A start, die, oom, health_status or restart event' });
+export type ContainerEvent = z.infer<typeof ContainerEvent>;
+
 export const HostContainer = z
   .strictObject({
     id: ContainerId,
@@ -108,6 +153,16 @@ export const HostContainer = z
     mounts: z.array(HostMount).max(200),
     /** Null when the container is not running or the sample failed. */
     stats: ContainerStats.nullable(),
+    /**
+     * The last five health-check results while it is unhealthy or starting (SHP-REQ-220); empty
+     * otherwise. This and the three fields after it are absent from agents older than SHP-P-20.
+     */
+    healthLog: z.array(HealthCheckResult).max(5).optional(),
+    /** `State.ExitCode`: the last exit code; 0 for a container that never exited (SHP-REQ-221). */
+    exitCode: z.int().optional(),
+    /** `State.OOMKilled`: whether the kernel killed its last run for memory. */
+    oomKilled: z.boolean().optional(),
+    restartPolicy: RestartPolicy.optional(),
   })
   .meta({ id: 'HostContainer', description: 'One container on the host, with its tier' });
 export type HostContainer = z.infer<typeof HostContainer>;
@@ -200,6 +255,10 @@ export const HostInventory = z
     networks: z.array(HostNetwork).max(500),
     builderCache: HostBuilderCache,
     disk: HostDisk,
+    /** `NCPU` from the Engine's `/info` (SHP-REQ-221). Absent from agents older than SHP-P-20. */
+    cpuCores: z.int().min(1).optional(),
+    /** `MemTotal` from the Engine's `/info`, in bytes. Absent from agents older than SHP-P-20. */
+    memoryBytes: Bytes.optional(),
   })
   .meta({ id: 'HostInventory', description: 'Everything Docker runs on the host, as the agent reported it' });
 export type HostInventory = z.infer<typeof HostInventory>;

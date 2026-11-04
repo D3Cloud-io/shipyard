@@ -43,6 +43,24 @@ export function renderIncidentBundle(bundle: IncidentBundle): string {
   out.push(line('CPU %', inspect.cpuPercent));
   out.push(line('Memory bytes', inspect.memoryBytes));
   out.push(line('Memory limit bytes', inspect.memoryLimitBytes));
+  out.push(line('Exit code', inspect.exitCode));
+  out.push(line('OOM killed', inspect.oomKilled === null ? null : inspect.oomKilled ? 'yes' : 'no'));
+  out.push(line('Restart policy', inspect.restartPolicy));
+  out.push('');
+  out.push('## Events (last 24 hours)');
+  out.push('');
+  if (bundle.events.length === 0) out.push('- none');
+  for (const e of bundle.events) {
+    const detail = e.exitCode !== null ? ` exit ${String(e.exitCode)}` : e.health !== null ? ` ${e.health}` : '';
+    out.push(`- ${e.at} ${e.kind}${detail}`);
+  }
+  out.push('');
+  out.push('## Health checks (latest, redacted)');
+  out.push('');
+  if (bundle.probes.length === 0) out.push('- none');
+  for (const probe of bundle.probes) {
+    out.push(`- ${probe.start} exit ${String(probe.exitCode)}: ${probe.output.trim() === '' ? '(no output)' : probe.output.trim().replace(/\s*\n\s*/g, ' / ')}`);
+  }
   out.push('');
   out.push('## Last change');
   out.push('');

@@ -4,7 +4,7 @@ import { verifyAgentRequest } from '../agent/verify.js';
 import { Prisma } from '../db.js';
 import type { ServiceDeps } from '../deps.js';
 import { sendRefusal } from '../errors.js';
-import { storeHostInventory } from '../host/index.js';
+import { storeContainerEvents, storeHostInventory } from '../host/index.js';
 import { mirrorVolumeArchives, type ArchiveMirrorChanges } from '../maintenance/service.js';
 import { detectDrift } from './drift.js';
 
@@ -363,6 +363,16 @@ export function mountReport(router: Router, deps: ServiceDeps): void {
         await storeHostInventory(db, agentId, report.host, now);
       } catch (err) {
         logger.error({ err, agentId }, 'storing the host inventory failed; the previous snapshot stands');
+      }
+    }
+
+    // Engine events since the last accepted report (SHP-ADR-013, SHP-REQ-217), in their own
+    // transaction for the same reason. Absent (an agent older than SHP-P-20) records nothing.
+    if (report.events !== undefined || report.droppedEvents !== undefined) {
+      try {
+        await storeContainerEvents(db, agentId, report.events ?? [], report.droppedEvents ?? 0, now, logger);
+      } catch (err) {
+        logger.error({ err, agentId }, 'storing container events failed');
       }
     }
 

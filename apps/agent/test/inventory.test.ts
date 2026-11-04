@@ -11,6 +11,7 @@ import type {
   HostVolumeRecord,
 } from '@shipyard/sequence';
 import {
+  dropPartialSecret,
   DF_TTL_MS,
   DOCKER_ROOT_TTL_MS,
   FAILURE_RETRY_MS,
@@ -463,5 +464,147 @@ describe('buildReport with an inventory (SHP-REQ-175)', () => {
 
   it('carries no stacks key when nothing is adopted', async () => {
     expect('stacks' in (await buildReport(base(), ROOT, versions))).toBe(false);
+  });
+});
+
+describe('exit state, health checks and host totals (SHP-T-20.2)', () => {
+  const ENV_FILE = '/srv/toy/.env';
+  const probe = (n: number, output: string) => ({ start: `2026-10-21T11:5${String(n)}:00.000Z`, end: `2026-10-21T11:5${String(n)}:01.000Z`, exitCode: 1, output });
+
+  function envFs(files: Record<string, string>): FsPort {
+    return {
+      readFile: (path) => (path in files ? Promise.resolve(files[path] ?? '') : Promise.reject(new Error(`ENOENT ${path}`))),
+      writeFileAtomic: () => Promise.reject(new Error('read-only')),
+      appendLine: () => Promise.reject(new Error('read-only')),
+      exists: (path) => Promise.resolve(path in files),
+      mkdirp: () => Promise.resolve(),
+      list: () => Promise.resolve([]),
+    };
+  }
+
+  function withExtras(world: World, extras: Partial<DockerPort>, fs?: FsPort) {
+    const fake = fakeDocker(world);
+    const docker: DockerPort = { ...fake.docker, ...extras };
+    const warn = vi.fn();
+    const collect = createInventoryCollector({
+      docker,
+      dataRoot: ROOT,
+      statfs: () => Promise.resolve(FS),
+      totalMemoryBytes: () => 16_000_000_000,
+      ...(fs === undefined ? {} : { fs }),
+      log: { info: vi.fn(), warn },
+    });
+    return { collect, warn };
+  }
+
+  const toy = { ...manifest('toy', 'toy'), envFiles: [ENV_FILE] } as unknown as Manifest;
+
+  it("reports each container's exit code, OOM kill and restart policy, Docker's empty name as no (SHP-REQ-221)", async () => {
+    const { collect } = withExtras(
+      {
+        containers: [
+          record({ exitCode: 137, oomKilled: true, restartPolicy: 'on-failure', state: 'exited' }),
+          record({ id: ID('b'), name: 'plain', exitCode: 0, oomKilled: false, restartPolicy: '' }),
+          // A policy this schema does not name is left out rather than guessed.
+          record({ id: ID('c'), name: 'odd', exitCode: 0, oomKilled: false, restartPolicy: 'sometimes' }),
+        ],
+      },
+      {},
+    );
+    const inv = await collect([]);
+    expect(HostInventory.parse(inv)).toEqual(inv);
+    const by = (name: string) => inv?.containers.find((c) => c.name === name);
+    expect(by('toy-web-1')).toMatchObject({ exitCode: 137, oomKilled: true, restartPolicy: 'on-failure', healthLog: [] });
+    expect(by('plain')).toMatchObject({ exitCode: 0, oomKilled: false, restartPolicy: 'no' });
+    expect(by('odd')).not.toHaveProperty('restartPolicy');
+  });
+
+  it('carries the CPU count and memory from /info, and leaves them out when /info fails', async () => {
+    const ok = withExtras({ containers: [] }, { hostInfo: () => Promise.resolve({ cpuCores: 4, memoryBytes: 8_000_000_000 }) });
+    expect(await ok.collect([])).toMatchObject({ cpuCores: 4, memoryBytes: 8_000_000_000 });
+    const failing = withExtras({ containers: [] }, { hostInfo: () => Promise.reject(new Error('engine down')) });
+    const inv = await failing.collect([]);
+    expect(inv).toBeDefined();
+    expect(inv).not.toHaveProperty('cpuCores');
+    expect(inv).not.toHaveProperty('memoryBytes');
+    expect(failing.warn).toHaveBeenCalledOnce();
+  });
+
+  it("redacts an unhealthy container's health-check output as its logs are: Env values and env-file values (SHP-REQ-220)", async () => {
+    const inspectEnv = vi.fn(() => Promise.resolve({ envValues: ['container-env-secret-1', 'short'], composeProject: 'toy' }));
+    const { collect } = withExtras(
+      {
+        containers: [
+          record({
+            health: 'unhealthy',
+            healthLog: [
+              probe(1, 'GET /health 500: password=env-file-secret-value'),
+              probe(2, `token container-env-secret-1 rejected; ${'x'.repeat(5000)}`),
+            ],
+          }),
+        ],
+      },
+      { inspectEnv },
+      envFs({ [ENV_FILE]: 'DB_PASSWORD=env-file-secret-value\nPORT=3000\n' }),
+    );
+    const inv = await collect([toy]);
+    expect(HostInventory.parse(inv)).toEqual(inv);
+    const log = inv?.containers[0]?.healthLog ?? [];
+    expect(log).toHaveLength(2);
+    expect(log[0]).toEqual({ ...probe(1, ''), output: 'GET /health 500: password=[redacted]' });
+    expect(log[1]?.output.startsWith('token [redacted] rejected; ')).toBe(true);
+    // Cut to 4 KiB after redaction.
+    expect(log[1]?.output).toHaveLength(4096);
+    const wire = JSON.stringify(inv);
+    expect(wire).not.toContain('env-file-secret-value');
+    expect(wire).not.toContain('container-env-secret-1');
+    expect(inspectEnv).toHaveBeenCalledWith(ID('a'));
+  });
+
+  it('sends a starting container its results with empty output when they cannot be redacted', async () => {
+    const raw = [probe(1, 'secret-ish output')];
+    const cases: { extras: Partial<DockerPort>; fs?: FsPort; manifests: Manifest[] }[] = [
+      // The port cannot read the redaction facts.
+      { extras: {}, manifests: [] },
+      // The Engine fails the inspect.
+      { extras: { inspectEnv: () => Promise.reject(new Error('engine down')) }, manifests: [] },
+      // The manifest's env file is missing.
+      { extras: { inspectEnv: () => Promise.resolve({ envValues: [], composeProject: 'toy' }) }, fs: envFs({}), manifests: [toy] },
+      // No filesystem to read it with.
+      { extras: { inspectEnv: () => Promise.resolve({ envValues: [], composeProject: 'toy' }) }, manifests: [toy] },
+    ];
+    for (const c of cases) {
+      const { collect } = withExtras({ containers: [record({ health: 'starting', healthLog: raw })] }, c.extras, c.fs);
+      const inv = await collect(c.manifests);
+      expect(inv?.containers[0]?.healthLog).toEqual([{ ...raw[0], output: '' }]);
+      expect(JSON.stringify(inv)).not.toContain('secret-ish');
+    }
+  });
+
+  it('carries no health-check results for a healthy container, nor more than five', async () => {
+    const many = [1, 2, 3, 4, 5, 6].map((n) => probe(n, `out ${String(n)}`));
+    const inspectEnv = () => Promise.resolve({ envValues: [], composeProject: null });
+    const { collect } = withExtras(
+      { containers: [record({ health: 'healthy', healthLog: many }), record({ id: ID('b'), name: 'sick', health: 'unhealthy', healthLog: many })] },
+      { inspectEnv },
+    );
+    const inv = await collect([]);
+    expect(inv?.containers.find((c) => c.name === 'toy-web-1')?.healthLog).toEqual([]);
+    expect(inv?.containers.find((c) => c.name === 'sick')?.healthLog?.map((r) => r.output)).toEqual(['out 2', 'out 3', 'out 4', 'out 5', 'out 6']);
+  });
+});
+
+describe('dropPartialSecret (SHP-REQ-220)', () => {
+  it('drops a tail that is the start of a secret Docker cut through', () => {
+    expect(dropPartialSecret('connect failed: token=hunter2-s3', ['hunter2-s3cr3t-value'])).toBe('connect failed: token=');
+  });
+
+  it('keeps the text when its end begins no secret, and ignores one-character overlaps', () => {
+    expect(dropPartialSecret('connect failed: timeout', ['hunter2-s3cr3t-value'])).toBe('connect failed: timeout');
+    expect(dropPartialSecret('path ends in h', ['hunter2-s3cr3t-value'])).toBe('path ends in h');
+  });
+
+  it('drops the longest such tail when several secrets could start there', () => {
+    expect(dropPartialSecret('key=abcd', ['cdXY', 'abcdEFGH'])).toBe('key=');
   });
 });

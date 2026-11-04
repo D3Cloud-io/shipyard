@@ -1,7 +1,10 @@
+import { PassThrough } from 'node:stream';
+
 import type Dockerode from 'dockerode';
 import { describe, expect, it, vi } from 'vitest';
 
-import { createDockerAdapter, healthFromStatus, parseDfSpace } from '../src/adapters/docker.js';
+import { createDockerAdapter, engineSince, healthFromStatus, healthLogFromInspect, parseDfSpace, parseEngineEvent } from '../src/adapters/docker.js';
+import type { EngineContainerEvent } from '../src/ports.js';
 
 /**
  * The host inventory reads (SHP-T-14.4, SHP-REQ-175..177). The fake dockerode below has only the
@@ -51,7 +54,14 @@ function inspected(over: Record<string, unknown> = {}): Record<string, unknown> 
   return {
     Id: ID_A,
     RestartCount: 3,
-    State: { Status: 'running', StartedAt: '2026-10-20T10:00:00.123456789Z', Health: { Status: 'healthy', Log: [{ Output: 'DB_PASSWORD=hunter2' }] } },
+    State: {
+      Status: 'running',
+      StartedAt: '2026-10-20T10:00:00.123456789Z',
+      ExitCode: 0,
+      OOMKilled: false,
+      Health: { Status: 'healthy', Log: [{ Start: '2026-10-20T10:00:05Z', End: '2026-10-20T10:00:05.1Z', ExitCode: 0, Output: 'DB_PASSWORD=hunter2' }] },
+    },
+    HostConfig: { RestartPolicy: { Name: 'unless-stopped', MaximumRetryCount: 0 } },
     // What an inspect carries and the adapter must never read.
     Config: { Env: ['DB_PASSWORD=hunter2'], Cmd: ['node', 'server.js', '--admin-token=s3cr3t-token'], Entrypoint: ['tini'], Labels: { 'com.example.billing-token-label': 'x' } },
     ...over,
@@ -164,6 +174,11 @@ describe('hostContainers (SHP-REQ-175)', () => {
         { type: 'bind', volume: null, source: '/srv/toy/conf', destination: '/conf', readOnly: true },
       ],
       networkIds: [NET],
+      exitCode: 0,
+      oomKilled: false,
+      restartPolicy: 'unless-stopped',
+      // Healthy: no probe output crosses the port at all.
+      healthLog: [],
     });
     // A stopped container is listed, with its state, no start time and nothing it does not have.
     expect(found[1]).toMatchObject({ name: 'toy-db-1', state: 'exited', health: 'none', startedAt: null, compose: null, ports: [], mounts: [] });
@@ -180,7 +195,25 @@ describe('hostContainers (SHP-REQ-175)', () => {
     // Only the two compose labels survive, as `compose`.
     expect(found[0]?.compose).toEqual({ project: 'toy', service: 'web' });
     expect(Object.keys(found[0] ?? {}).sort()).toEqual(
-      ['compose', 'createdAt', 'health', 'id', 'image', 'imageId', 'mounts', 'name', 'networkIds', 'ports', 'restartCount', 'startedAt', 'state'].sort(),
+      [
+        'compose',
+        'createdAt',
+        'exitCode',
+        'health',
+        'healthLog',
+        'id',
+        'image',
+        'imageId',
+        'mounts',
+        'name',
+        'networkIds',
+        'oomKilled',
+        'ports',
+        'restartCount',
+        'restartPolicy',
+        'startedAt',
+        'state',
+      ].sort(),
     );
   });
 
@@ -211,6 +244,184 @@ describe('hostContainers (SHP-REQ-175)', () => {
     expect(healthFromStatus('Up 2 seconds (health: starting)')).toBe('starting');
     expect(healthFromStatus('Up 2 hours')).toBe('none');
     expect(healthFromStatus(undefined)).toBe('none');
+  });
+});
+
+describe('exit state and health log (SHP-T-20.2, SHP-REQ-220, SHP-REQ-221)', () => {
+  const probe = (n: number) => ({
+    Start: `2026-10-20T10:0${String(n)}:00.5Z`,
+    End: `2026-10-20T10:0${String(n)}:01Z`,
+    ExitCode: 1,
+    Output: `probe ${String(n)} failed: token=hunter2`,
+  });
+
+  it('reads the exit code, OOM kill and restart policy from the same inspect', async () => {
+    const { docker, calls } = fakeEngine({
+      inspect: (id) =>
+        Promise.resolve(
+          inspected({ Id: id, State: { Status: 'exited', StartedAt: '2026-10-20T10:00:00Z', ExitCode: 137, OOMKilled: true }, HostConfig: { RestartPolicy: { Name: 'on-failure', MaximumRetryCount: 3 } } }),
+        ),
+    });
+    const [found] = await createDockerAdapter({ docker }).hostContainers();
+    expect(found).toMatchObject({ exitCode: 137, oomKilled: true, restartPolicy: 'on-failure', healthLog: [] });
+    // One inspect per container, as before.
+    expect(calls.filter((c) => c.startsWith('inspect'))).toHaveLength(1);
+  });
+
+  it("carries Docker's empty restart policy name as it is, and no exit state when the inspect failed", async () => {
+    const plain = fakeEngine({ inspect: (id) => Promise.resolve(inspected({ Id: id, HostConfig: { RestartPolicy: { Name: '' } } })) });
+    expect((await createDockerAdapter({ docker: plain.docker }).hostContainers())[0]?.restartPolicy).toBe('');
+    const broken = fakeEngine({ inspect: () => Promise.reject(new Error('engine hiccup')) });
+    const [degraded] = await createDockerAdapter({ docker: broken.docker }).hostContainers();
+    expect(degraded).not.toHaveProperty('exitCode');
+    expect(degraded).not.toHaveProperty('oomKilled');
+    expect(degraded).not.toHaveProperty('restartPolicy');
+  });
+
+  it('carries the last five health-check results, raw and oldest first, only while unhealthy or starting', async () => {
+    const log = [1, 2, 3, 4, 5, 6, 7].map(probe);
+    const unhealthy = fakeEngine({
+      inspect: (id) => Promise.resolve(inspected({ Id: id, State: { Status: 'running', StartedAt: '2026-10-20T10:00:00Z', ExitCode: 0, OOMKilled: false, Health: { Status: 'unhealthy', Log: log } } })),
+    });
+    const [found] = await createDockerAdapter({ docker: unhealthy.docker }).hostContainers();
+    expect(found?.health).toBe('unhealthy');
+    expect(found?.healthLog?.map((r) => r.output)).toEqual([3, 4, 5, 6, 7].map((n) => `probe ${String(n)} failed: token=hunter2`));
+    expect(found?.healthLog?.[0]).toEqual({ start: '2026-10-20T10:03:00.500Z', end: '2026-10-20T10:03:01.000Z', exitCode: 1, output: 'probe 3 failed: token=hunter2' });
+
+    const starting = fakeEngine({
+      inspect: (id) => Promise.resolve(inspected({ Id: id, State: { Status: 'running', StartedAt: '2026-10-20T10:00:00Z', Health: { Status: 'starting', Log: [probe(1)] } } })),
+    });
+    expect((await createDockerAdapter({ docker: starting.docker }).hostContainers())[0]?.healthLog).toHaveLength(1);
+  });
+
+  it('healthLogFromInspect skips entries with no start and tolerates a missing log', () => {
+    expect(healthLogFromInspect(undefined)).toEqual([]);
+    expect(healthLogFromInspect(null)).toEqual([]);
+    expect(healthLogFromInspect([{ Output: 'x' }, { Start: '2026-10-20T10:00:00Z', End: '0001-01-01T00:00:00Z', ExitCode: 0, Output: 'ok' }])).toEqual([
+      { start: '2026-10-20T10:00:00.000Z', end: null, exitCode: 0, output: 'ok' },
+    ]);
+  });
+});
+
+describe('hostInfo (SHP-REQ-221)', () => {
+  it('reads NCPU and MemTotal from /info', async () => {
+    const { docker } = fakeEngine({ info: { NCPU: 8, MemTotal: 16_000_000_000, DockerRootDir: '/var/lib/docker' } });
+    expect(await createDockerAdapter({ docker }).hostInfo()).toEqual({ cpuCores: 8, memoryBytes: 16_000_000_000 });
+  });
+
+  it('is null when /info leaves either out', async () => {
+    const { docker } = fakeEngine({ info: { NCPU: 0, MemTotal: 1 } });
+    expect(await createDockerAdapter({ docker }).hostInfo()).toBeNull();
+    const bare = fakeEngine({ info: { DockerRootDir: '/var/lib/docker' } });
+    expect(await createDockerAdapter({ docker: bare.docker }).hostInfo()).toBeNull();
+  });
+});
+
+describe('containerEvents (SHP-T-20.2, SHP-REQ-217)', () => {
+  const ID = 'f'.repeat(64);
+  const line = (action: string, timeNano: string, attrs: Record<string, string> = {}): string =>
+    `{"status":"${action}","id":"${ID}","from":"toy","Type":"container","Action":"${action}","Actor":{"ID":"${ID}","Attributes":${JSON.stringify({ name: 'toy-web-1', image: 'toy', 'com.example.secret': 'label-secret', ...attrs })}},"scope":"local","time":${timeNano.slice(0, 10)},"timeNano":${timeNano}}`;
+
+  function fakeEvents() {
+    const streams: PassThrough[] = [];
+    const queries: Record<string, unknown>[] = [];
+    const docker = {
+      getEvents: vi.fn((opts: Record<string, unknown>) => {
+        queries.push(opts);
+        const stream = new PassThrough();
+        streams.push(stream);
+        return Promise.resolve(stream);
+      }),
+    };
+    return { docker: docker as unknown as Dockerode, streams, queries };
+  }
+
+  it('asks for container start, die, oom, health_status and restart events only, from `since`', async () => {
+    const { docker, streams, queries } = fakeEvents();
+    const stop = new AbortController();
+    const done = createDockerAdapter({ docker }).containerEvents({ since: '1790000000.000000001', signal: stop.signal }, () => undefined);
+    await vi.waitFor(() => {
+      expect(streams).toHaveLength(1);
+    });
+    expect(JSON.parse(String(queries[0]?.filters))).toEqual({ type: ['container'], event: ['start', 'die', 'oom', 'health_status', 'restart'] });
+    expect(queries[0]?.since).toBe('1790000000.000000001');
+    expect(queries[0]?.abortSignal).toBe(stop.signal);
+    stop.abort();
+    await expect(done).resolves.toBeUndefined();
+  });
+
+  it('parses newline-delimited events split anywhere, keeps the exact timeNano, and resolves when the Engine ends the stream', async () => {
+    const { docker, streams, queries } = fakeEvents();
+    const seen: EngineContainerEvent[] = [];
+    const done = createDockerAdapter({ docker }).containerEvents({ since: null, signal: new AbortController().signal }, (e) => seen.push(e));
+    await vi.waitFor(() => {
+      expect(streams).toHaveLength(1);
+    });
+    expect(queries[0]).not.toHaveProperty('since');
+    const text = [
+      line('die', '1790000000123456789', { exitCode: '137' }),
+      line('start', '1790000000223456789'),
+      line('health_status: unhealthy', '1790000000323456789'),
+      line('restart', '1790000000423456789'),
+      line('oom', '1790000000523456789'),
+      // Not asked for, and not read if the Engine sent it anyway.
+      line('exec_create: sh', '1790000000623456789'),
+      '{"Type":"network","Action":"connect","timeNano":1}',
+      'not json',
+    ].join('\n');
+    const stream = streams[0];
+    if (stream === undefined) throw new Error('no stream');
+    // Cut mid-line and mid-character.
+    const bytes = Buffer.from(`${text}\n`, 'utf8');
+    stream.write(bytes.subarray(0, 37));
+    stream.write(bytes.subarray(37, 401));
+    stream.write(bytes.subarray(401));
+    stream.end();
+    await done;
+
+    expect(seen.map((e) => e.kind)).toEqual(['die', 'start', 'health_status', 'restart', 'oom']);
+    expect(seen[0]).toEqual({ kind: 'die', timeNano: '1790000000123456789', containerId: ID, containerName: 'toy-web-1', exitCode: 137, health: null });
+    expect(seen[1]?.exitCode).toBeNull();
+    expect(seen[2]?.health).toBe('unhealthy');
+    // The labels in the attributes never cross the port (SHP-REQ-177).
+    expect(JSON.stringify(seen)).not.toContain('label-secret');
+  });
+
+  it('rejects when the stream breaks, and resolves when the signal aborts it', async () => {
+    const broken = fakeEvents();
+    const failing = createDockerAdapter({ docker: broken.docker }).containerEvents({ since: null, signal: new AbortController().signal }, () => undefined);
+    await vi.waitFor(() => {
+      expect(broken.streams).toHaveLength(1);
+    });
+    broken.streams[0]?.destroy(new Error('socket hang up'));
+    await expect(failing).rejects.toThrow('socket hang up');
+
+    const aborted = fakeEvents();
+    const stop = new AbortController();
+    const ending = createDockerAdapter({ docker: aborted.docker }).containerEvents({ since: null, signal: stop.signal }, () => undefined);
+    await vi.waitFor(() => {
+      expect(aborted.streams).toHaveLength(1);
+    });
+    stop.abort();
+    await expect(ending).resolves.toBeUndefined();
+    expect(aborted.streams[0]?.destroyed).toBe(true);
+  });
+
+  it('parseEngineEvent falls back to `time` and reads a name without its slash', () => {
+    expect(parseEngineEvent(`{"Type":"container","Action":"start","Actor":{"ID":"${ID}","Attributes":{"name":"/x"}},"time":1790000000}`)).toEqual({
+      kind: 'start',
+      timeNano: '1790000000000000000',
+      containerId: ID,
+      containerName: 'x',
+      exitCode: null,
+      health: null,
+    });
+    expect(parseEngineEvent(`{"Type":"container","Action":"start","Actor":{"Attributes":{}},"time":1}`)).toBeNull();
+  });
+
+  it('engineSince writes seconds and nine digits of nanoseconds', () => {
+    expect(engineSince('1790000000000000001')).toBe('1790000000.000000001');
+    expect(engineSince('1790000000123456789')).toBe('1790000000.123456789');
   });
 });
 

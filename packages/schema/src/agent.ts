@@ -5,7 +5,7 @@ import { Manifest } from './manifest.js';
 import { Refusal } from './errors.js';
 import { BuildJob } from './build.js';
 import { BuildSettings } from './settings.js';
-import { HostInventory } from './host.js';
+import { ContainerEvent, HostInventory } from './host.js';
 import { AgentStack } from './stack.js';
 import { ActionJob, LogsJob } from './actions.js';
 import { StackUpdateJob } from './stack-updates.js';
@@ -107,6 +107,9 @@ export const AgentBuildCache = z
   .meta({ id: 'AgentBuildCache', description: 'The BuildKit cache size, its cap, last GC time and applied limits' });
 export type AgentBuildCache = z.infer<typeof AgentBuildCache>;
 
+/** The most Engine events an agent holds between reports (SHP-REQ-219). */
+export const AGENT_EVENT_BUFFER = 2000;
+
 export const AgentReport = z
   .strictObject({
     agentVersion: z.string().min(1),
@@ -141,6 +144,14 @@ export const AgentReport = z
      * agents.
      */
     volumeArchives: z.array(VolumeArchive).max(5000).optional(),
+    /**
+     * Engine events since the last report the server accepted, oldest first (SHP-REQ-217). The
+     * agent buffers at most `AGENT_EVENT_BUFFER` and drops the oldest past it (SHP-REQ-219).
+     * Absent from agents older than SHP-P-20.
+     */
+    events: z.array(ContainerEvent).max(AGENT_EVENT_BUFFER).optional(),
+    /** How many events the agent dropped since its last accepted report because its buffer was full. */
+    droppedEvents: z.int().min(0).optional(),
   })
   .meta({ id: 'AgentReport', description: 'What the agent reports about itself and the apps it manages' });
 export type AgentReport = z.infer<typeof AgentReport>;

@@ -11,6 +11,7 @@ import { startScheduler } from './schedules/runner.js';
 import { startBackups } from './jobs/backup.js';
 import { startHeartbeat } from './jobs/heartbeat.js';
 import { startBuildLogPrune } from './jobs/build-log-prune.js';
+import { startContainerHistoryPrune } from './jobs/container-history-prune.js';
 import { startDeletionPurge } from './users/deletion.js';
 import { startBuildReconcile } from './jobs/build-reconcile.js';
 import { registerAutoDeploy } from './builds/autodeploy.js';
@@ -42,6 +43,8 @@ const backups = startBackups({ db, logger, config, bus }, mailer);
 const heartbeat = startHeartbeat({ db, logger, config, bus }, mailer);
 // Build logs go 30 days after their build ends (SHP-REQ-141).
 const buildLogPrune = startBuildLogPrune({ db, logger });
+// Container events go after 30 days and health buckets after 7 (SHP-REQ-222, SHP-REQ-223).
+const containerHistoryPrune = startContainerHistoryPrune({ db, logger });
 // Accounts whose deletion grace period has passed are purged hourly (SHP-T-11.3).
 const deletionPurge = startDeletionPurge({ db, logger });
 // A default-branch head the push webhook missed is still built (SHP-REQ-114).
@@ -58,7 +61,7 @@ const server = app.listen(config.PORT, () => {
 function shutdown(signal: string): void {
   logger.info({ signal }, 'shutting down');
   server.close(() => {
-    Promise.all([outbox.stop(), approvalExpiry.stop(), nightlyBackups.stop(), scheduler.stop(), backups.stop(), heartbeat.stop(), buildLogPrune.stop(), buildReconcile.stop(), deletionPurge.stop()])
+    Promise.all([outbox.stop(), approvalExpiry.stop(), nightlyBackups.stop(), scheduler.stop(), backups.stop(), heartbeat.stop(), buildLogPrune.stop(), containerHistoryPrune.stop(), buildReconcile.stop(), deletionPurge.stop()])
       .then(() => db.$disconnect())
       .catch((err: unknown) => {
         logger.error({ err }, 'error disconnecting db');

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { IncidentFact, type LastChange, type LogLine } from '@shipyard/schema';
+import { IncidentFact, type ContainerEvent, type LastChange, type LogLine } from '@shipyard/schema';
 import { firstErrorIndex, formatDuration, incidentFacts, looksLikeError, type FactsInput } from '../../src/incident/facts.js';
 import { incidentLogsOf } from '../../src/incident/service.js';
 
@@ -124,5 +124,45 @@ describe('incidentFacts', () => {
       lastChange: null,
     });
     expect(facts).toEqual([{ kind: 'restarts', at: healthy.startedAt, text: 'Docker has restarted it once' }]);
+  });
+});
+
+describe('incidentFacts from container events (SHP-T-20.3; SHP-REQ-227, SHP-REQ-228)', () => {
+  const id = 'a'.repeat(64);
+  const ev = (kind: ContainerEvent['kind'], at: string, exitCode: number | null = null): ContainerEvent => ({ kind, at, containerId: id, containerName: 'web-1', exitCode, health: null });
+
+  it('states a restart loop, the last non-zero exit and an OOM kill, dated, in time order', () => {
+    const since = new Date('2026-11-04T10:00:00.000Z');
+    const facts = incidentFacts({
+      container: { ...healthy, exitCode: 0, oomKilled: false },
+      condition: { condition: 'restart-loop', since },
+      restartLoop: { restarts: 4, since },
+      events: [ev('oom', '2026-11-04T09:59:00.000Z'), ev('die', '2026-11-04T09:59:01.000Z', 137), ev('start', '2026-11-04T10:00:00.000Z'), ev('die', '2026-11-04T10:05:00.000Z', 1)],
+      lines: [],
+      lastChange: null,
+    });
+    for (const f of facts) IncidentFact.parse(f);
+    expect(facts).toEqual([
+      { kind: 'oom', at: '2026-11-04T09:59:00.000Z', text: 'Killed for running out of memory' },
+      { kind: 'failing', at: since.toISOString(), text: 'In a restart loop since 2026-11-04T10:00:00.000Z' },
+      { kind: 'restart-loop', at: since.toISOString(), text: 'Restarted 4 times in 15 minutes.' },
+      { kind: 'exit', at: '2026-11-04T10:05:00.000Z', text: 'Exited with code 1' },
+    ]);
+  });
+
+  it("falls back to Docker's exit code and OOMKilled when no event says so, and states nothing for a clean exit", () => {
+    const undated = incidentFacts({ container: { ...healthy, exitCode: 2, oomKilled: true }, condition: null, events: [], lines: [], lastChange: null });
+    expect(undated).toEqual([
+      { kind: 'exit', at: null, text: 'Docker reports its last exit code as 2' },
+      { kind: 'oom', at: null, text: 'Docker reports its last run was killed for running out of memory' },
+    ]);
+    const clean = incidentFacts({ container: { ...healthy, exitCode: 0, oomKilled: false }, condition: null, events: [ev('die', '2026-11-04T10:00:00.000Z', 0)], lines: [], lastChange: null });
+    expect(clean).toEqual([]);
+    const many = incidentFacts({ container: healthy, condition: null, events: [ev('oom', '2026-11-04T09:00:00.000Z'), ev('oom', '2026-11-04T10:00:00.000Z')], lines: [], lastChange: null });
+    expect(many).toEqual([{ kind: 'oom', at: '2026-11-04T10:00:00.000Z', text: 'Killed for running out of memory 2 times in 24 hours' }]);
+  });
+
+  it('states nothing new for an agent older than SHP-P-20, which reports none of it', () => {
+    expect(incidentFacts({ container: healthy, condition: null, lines: [], lastChange: null })).toEqual([]);
   });
 });
