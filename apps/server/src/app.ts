@@ -30,6 +30,7 @@ import { schedulesRouter } from './schedules/index.js';
 import { restoreRouter } from './restore/index.js';
 import { systemRouter } from './system/index.js';
 import { hostRouter } from './host/index.js';
+import { resourcesRouter } from './resources/index.js';
 import { actionsRouter } from './actions/index.js';
 import { logsRouter } from './logs/index.js';
 import { stackUpdatesRouter, stacksRouter } from './stack-updates/index.js';
@@ -163,6 +164,7 @@ export function createApp(deps: AppDeps): Express {
   app.use('/api/schedules', schedulesRouter(serviceDeps));
   app.use('/api/system', systemRouter(serviceDeps));
   // Read-only: the host inventory the agent last reported (SHP-T-14.5, SHP-REQ-181).
+  app.use('/api/host/resources', resourcesRouter(serviceDeps));
   app.use('/api/host', hostRouter(serviceDeps));
   // Lifecycle actions and container logs (SHP-T-15.4; SHP-ADR-010, SHP-ADR-011).
   app.use('/api/actions', actionsRouter(serviceDeps));
