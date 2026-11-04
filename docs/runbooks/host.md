@@ -19,7 +19,7 @@ Every report, about once a minute, carries:
 
 - every container, volume, image and network;
 - disk;
-- a one-shot CPU and memory sample for each container.
+- a one-shot CPU and memory sample for each running container.
 
 SHP-P-20 adds the following.
 
@@ -105,7 +105,8 @@ report object is strict and a server that does not know the new fields refuses a
 report. Then upgrade the agent from `upgrade-agent.md`, with `--no-deps`.
 
 An agent older than SHP-P-20 keeps working. Its reports lack events, probe results, exit state and
-host totals: the API leaves those fields out (or `null` on Resources and in the bundle), and no
-events or health buckets are kept for it.
+host totals: the API leaves those fields out (or `null` on Resources and in the bundle). No events
+are kept for it; its health buckets still record the worst health it reported, with no failed checks
+counted, because it sends no health-check results.
 
 Related: SHP-ADR-009, SHP-ADR-011, SHP-ADR-013, `incidents.md`.
