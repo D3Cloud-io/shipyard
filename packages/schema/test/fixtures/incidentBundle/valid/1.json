@@ -58,7 +58,7 @@
       "kind": "die",
       "at": "2026-11-04T10:01:00.000Z",
       "containerId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-      "containerName": "bindery-worker-1",
+      "containerName": "postroom-imap-1",
       "exitCode": 137,
       "health": null
     }

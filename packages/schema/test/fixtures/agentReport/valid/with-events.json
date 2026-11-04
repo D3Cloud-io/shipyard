@@ -176,7 +176,7 @@
       "kind": "die",
       "at": "2026-11-04T10:01:00.000Z",
       "containerId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-      "containerName": "bindery-worker-1",
+      "containerName": "bindery-api-1",
       "exitCode": 137,
       "health": null
     },
@@ -184,10 +184,10 @@
       "kind": "health_status",
       "at": "2026-11-04T10:02:00.000Z",
       "containerId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-      "containerName": "bindery-worker-1",
+      "containerName": "bindery-api-1",
       "exitCode": null,
       "health": "unhealthy"
     }
   ],
-  "droppedEvents": 0
+  "droppedEvents": 3
 }
