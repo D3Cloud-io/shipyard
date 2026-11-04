@@ -47,6 +47,7 @@ import { loadAgentConfig } from './config.js';
 import { waitForConfirmation } from './enrol.js';
 import { loadOrCreateIdentity } from './identity.js';
 import { POLL_TIMEOUT_MS, createTargetRunner, fileTargetStore, reportLeftovers, runLoop, targetStorePath, trackInFlight } from './loop.js';
+import { createEventCollector } from './events.js';
 import { createInventoryCollector } from './inventory.js';
 import { createLogsRunner } from './logs.js';
 import { createMaintenanceRunner, reportInterruptedMaintenance } from './maintenance.js';
@@ -220,7 +221,16 @@ export async function main(env: NodeJS.ProcessEnv = process.env): Promise<void> 
 
   // Holds the df and Docker-root caches and each container's previous stats sample across reports
   // (SHP-T-14.4), so it is made once.
-  const inventory = createInventoryCollector({ docker: ports.docker, dataRoot: config.dataRoot, log: logger });
+  const inventory = createInventoryCollector({ docker: ports.docker, dataRoot: config.dataRoot, fs: ports.fs, log: logger });
+
+  // The Engine's events (SHP-T-20.2, SHP-REQ-217..219): one read-only stream on the Engine socket,
+  // reopened from the last event's time, buffered until a report carrying them is accepted. It
+  // stops with the agent, or with the loop if that ever ends another way.
+  const events = createEventCollector({ docker: ports.docker, log: logger });
+  const eventsDone = new AbortController();
+  const eventStream = events.run(AbortSignal.any([stopping.signal, eventsDone.signal])).catch((err: unknown) => {
+    logger.error({ err: err instanceof Error ? err.message : String(err) }, 'Engine event stream stopped');
+  });
 
   const reporting = startReporting(
     client,
@@ -234,12 +244,13 @@ export async function main(env: NodeJS.ProcessEnv = process.env): Promise<void> 
           buildCache: () => cacheManager?.snapshot(),
           inventory,
           stackServices: (stack) => candidates.services(stack),
+          events,
           log: logger,
         },
         config.dataRoot,
         { agentVersion: config.agentVersion, patExpiresAt: github.tokenExpiresAt()?.toISOString() ?? null },
       ),
-    { currentHash: () => manifestsHash(ports.fs, config.dataRoot), log: logger },
+    { currentHash: () => manifestsHash(ports.fs, config.dataRoot), accepted: (report) => { events.accepted(report); }, log: logger },
   );
 
   const runTarget = createTargetRunner({
@@ -453,6 +464,8 @@ export async function main(env: NodeJS.ProcessEnv = process.env): Promise<void> 
     });
   } finally {
     reporting.stop();
+    eventsDone.abort();
+    await eventStream;
     if (gcTimer !== undefined) clearInterval(gcTimer);
     if (worker !== undefined && worker.busy()) {
       // Stop at the next stage boundary and report it cancelled; a build still stuck in a stage

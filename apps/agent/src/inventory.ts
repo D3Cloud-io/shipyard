@@ -3,23 +3,30 @@ import { totalmem } from 'node:os';
 import {
   Digest,
   HostInventory,
+  RestartPolicy,
   type AppName,
   type ContainerStats,
   type ContainerTier,
+  type HealthCheckResult,
   type HostContainer,
   type HostFilesystem,
   type Manifest,
   type StackManifest,
 } from '@shipyard/schema';
-import type {
-  DockerPort,
-  DockerRootSpace,
-  HostContainerRecord,
-  HostImageRecord,
-  HostNetworkRecord,
-  HostStatsSample,
-  HostSystemDf,
-  HostVolumeRecord,
+import {
+  createRedactor,
+  loadRedactionValues,
+  redactionValues,
+  type DockerPort,
+  type DockerRootSpace,
+  type FsPort,
+  type HostContainerRecord,
+  type HostImageRecord,
+  type HostInfo,
+  type HostNetworkRecord,
+  type HostStatsSample,
+  type HostSystemDf,
+  type HostVolumeRecord,
 } from '@shipyard/sequence';
 import type { ReportLog } from './report.js';
 
@@ -36,6 +43,12 @@ import type { ReportLog } from './report.js';
  *
  * Nothing here can leak a container's environment, command or labels: the port never carries them
  * (SHP-REQ-177), and `HostInventory` is a strict schema with no field for them.
+ *
+ * Each container also carries its last exit code, whether it was OOM-killed and its restart policy,
+ * and the host its CPU count and memory from `/info` (SHP-T-20.2, SHP-REQ-221). A container that is
+ * unhealthy or starting carries its last five health-check results, their output redacted here
+ * exactly as its logs are (SHP-REQ-220): when the redaction values cannot be read, the result goes
+ * with empty output rather than with text that was not redacted.
  */
 
 export const DF_TTL_MS = 10 * 60_000;
@@ -45,6 +58,8 @@ export const FAILURE_RETRY_MS = 60_000;
 /** A report does not wait longer than this for a slow `/system/df`; the read carries on in the background. */
 export const DF_WAIT_MS = 30_000;
 const STATS_CONCURRENCY = 8;
+/** `HealthCheckResult.output` is capped at 4 KiB, cut after redaction. */
+export const HEALTH_OUTPUT_MAX_CHARS = 4096;
 
 // ─── Tier ────────────────────────────────────────────────────────────────────
 
@@ -139,6 +154,11 @@ export interface InventoryOptions {
   now?: () => number;
   /** Host memory in bytes, to tell "no limit" from a real one. Default `os.totalmem()`. */
   totalMemoryBytes?: () => number;
+  /**
+   * Reads the env files a health check's output is redacted against (SHP-REQ-220). Absent: a
+   * container whose manifest or stack names env files reports its results with empty output.
+   */
+  fs?: FsPort;
   log?: ReportLog;
 }
 
@@ -202,6 +222,73 @@ export function createInventoryCollector(
     return dockerRoot.value;
   };
 
+  /** `/info`, or null when it fails: the report then goes without the host totals. */
+  const hostInfo = async (): Promise<HostInfo | null> => {
+    const read = docker.hostInfo?.bind(docker);
+    if (read === undefined) return null;
+    try {
+      return await read();
+    } catch (err) {
+      opts.log?.warn({ err: err instanceof Error ? err.message : String(err) }, '/info failed; reporting without host CPU and memory');
+      return null;
+    }
+  };
+
+  /**
+   * The redacted health logs of the containers that carry one (SHP-REQ-220), by ID: the same values
+   * as `logs.ts` redacts, the container's Env values and its manifest's or stack's env files. A
+   * container whose facts or env files cannot be read gets its results with empty output.
+   */
+  const redactedHealthLogs = async (
+    containers: readonly HostContainerRecord[],
+    manifests: readonly Manifest[],
+    stacks: readonly StackManifest[],
+  ): Promise<Map<string, HealthCheckResult[]>> => {
+    const out = new Map<string, HealthCheckResult[]>();
+    const envFileValues = new Map<string, Promise<string[]>>();
+    for (const c of containers) {
+      const raw = c.healthLog ?? [];
+      if (raw.length === 0 || (c.health !== 'unhealthy' && c.health !== 'starting')) continue;
+      let redact: ((text: string) => string) | null = null;
+      try {
+        const facts = await docker.inspectEnv?.(c.id);
+        if (facts !== undefined && facts !== null) {
+          const project = facts.composeProject;
+          const envFiles =
+            project === null ? undefined : (manifests.find((m) => m.compose.project === project)?.envFiles ?? stacks.find((m) => m.compose.project === project)?.envFiles);
+          let secrets: string[] = [];
+          if (envFiles !== undefined && envFiles.length > 0) {
+            const fs = opts.fs;
+            if (fs === undefined) throw new Error('no filesystem to read the env files with');
+            const key = envFiles.join('\n');
+            let loading = envFileValues.get(key);
+            if (loading === undefined) {
+              loading = loadRedactionValues(fs, envFiles);
+              envFileValues.set(key, loading);
+            }
+            secrets = await loading;
+          }
+          redact = createRedactor(redactionValues(secrets, facts.envValues));
+        }
+      } catch (err) {
+        // Never the output, never the error's text about a value: only that it could not be redacted.
+        opts.log?.warn({ container: c.name, err: err instanceof Error ? err.message : String(err) }, 'health check output could not be redacted; reporting it empty');
+        redact = null;
+      }
+      const apply = redact;
+      out.set(
+        c.id,
+        raw.slice(-5).map((r) => ({
+          start: r.start,
+          end: r.end,
+          exitCode: r.exitCode,
+          output: apply === null ? '' : apply(r.output).slice(0, HEALTH_OUTPUT_MAX_CHARS),
+        })),
+      );
+    }
+    return out;
+  };
+
   const dataRootSpace = async (): Promise<HostFilesystem> => {
     const s = await statfs(dataRoot);
     return { path: dataRoot, freeBytes: s.bavail * s.bsize, totalBytes: s.blocks * s.bsize };
@@ -251,12 +338,14 @@ export function createInventoryCollector(
     }
 
     const containers = await readContainers();
-    const [volumes, images, networks, dfResult, dataDisk] = await Promise.all([
+    const [volumes, images, networks, dfResult, dataDisk, info, healthLogs] = await Promise.all([
       readVolumes(),
       readImages(),
       readNetworks(),
       systemDf(readDf),
       dataRootSpace(),
+      hostInfo(),
+      redactedHealthLogs(containers, manifests, stacks),
     ]);
     const readRoot = docker.dockerRootSpace?.bind(docker);
     const dockerRootDisk = readRoot === undefined ? null : await dockerRootSpace(readRoot);
@@ -284,7 +373,7 @@ export function createInventoryCollector(
     const inventory: HostInventory = {
       sampledAt: new Date(now()).toISOString(),
       containers: containers
-        .map((c) => hostContainer(c, imageById.get(c.imageId), manifests, stacks, stats.get(c.id) ?? null))
+        .map((c) => hostContainer(c, imageById.get(c.imageId), manifests, stacks, stats.get(c.id) ?? null, healthLogs.get(c.id) ?? []))
         .filter((c): c is HostContainer => c !== null)
         .sort((a, b) => a.name.localeCompare(b.name)),
       volumes: volumes
@@ -304,6 +393,7 @@ export function createInventoryCollector(
       networks: networks.map((n) => hostNetwork(n, networkMembers.get(n.id) ?? 0)).sort((a, b) => a.name.localeCompare(b.name)),
       builderCache: dfResult.builderCache,
       disk: { dataRoot: dataDisk, dockerRoot: dockerRootDisk },
+      ...(info === null ? {} : { cpuCores: info.cpuCores, memoryBytes: info.memoryBytes }),
     };
 
     // The report is the agent's heartbeat. An inventory the server's schema would refuse (say, a
@@ -323,9 +413,12 @@ function hostContainer(
   manifests: readonly Manifest[],
   stacks: readonly StackManifest[],
   stats: ContainerStats | null,
+  healthLog: HealthCheckResult[],
 ): HostContainer | null {
   if (!STATES.has(c.state)) return null;
   const { tier, app } = deriveTier(c.compose?.project ?? null, manifests, stacks);
+  // Docker's empty policy name is `no`; a name this schema does not know is left out, not guessed.
+  const policy = RestartPolicy.safeParse(c.restartPolicy === '' ? 'no' : c.restartPolicy);
   return {
     id: c.id,
     name: c.name,
@@ -349,6 +442,10 @@ function hostContainer(
       .slice(0, 200)
       .map((m) => ({ type: m.type as 'volume' | 'bind' | 'tmpfs' | 'npipe' | 'cluster' | 'image', volume: m.volume, source: m.source, destination: m.destination, readOnly: m.readOnly })),
     stats: c.state === 'running' ? stats : null,
+    healthLog: c.health === 'unhealthy' || c.health === 'starting' ? healthLog : [],
+    ...(c.exitCode === undefined ? {} : { exitCode: c.exitCode }),
+    ...(c.oomKilled === undefined ? {} : { oomKilled: c.oomKilled }),
+    ...(policy.success ? { restartPolicy: policy.data } : {}),
   };
 }
 

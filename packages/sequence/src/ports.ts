@@ -253,6 +253,70 @@ export interface HostContainerRecord {
   mounts: { type: string; volume: string | null; source: string | null; destination: string; readOnly: boolean }[];
   /** IDs of the networks it is attached to, for counting a network's members. */
   networkIds: string[];
+  /**
+   * From the same inspect (SHP-T-20.2, SHP-REQ-221): `State.ExitCode`, `State.OOMKilled` and
+   * `HostConfig.RestartPolicy.Name` as Docker spells it (`''` is `no`). Absent when the inspect
+   * failed, and optional so existing fakes need not set them.
+   */
+  exitCode?: number;
+  oomKilled?: boolean;
+  restartPolicy?: string;
+  /**
+   * The last five `State.Health.Log` entries, oldest first, and only while `health` is `unhealthy`
+   * or `starting` (SHP-REQ-220); empty otherwise. **Not redacted**: a probe's output is the
+   * container's own text, like its logs, and the agent redacts it before it leaves the host.
+   */
+  healthLog?: HostHealthCheckRecord[];
+}
+
+/** One raw health-check result from a container's inspect. `output` is unredacted. */
+export interface HostHealthCheckRecord {
+  /** ISO. */
+  start: string;
+  /** ISO; null while the check is still running. */
+  end: string | null;
+  exitCode: number;
+  output: string;
+}
+
+/** `GET /info`'s host totals (SHP-REQ-221): `NCPU` and `MemTotal`. */
+export interface HostInfo {
+  cpuCores: number;
+  memoryBytes: number;
+}
+
+/** The Engine events the agent reads (SHP-REQ-217); the stream asks the Engine for these only. */
+export const ENGINE_EVENT_KINDS = ['start', 'die', 'oom', 'health_status', 'restart'] as const;
+export type EngineEventKind = (typeof ENGINE_EVENT_KINDS)[number];
+
+/**
+ * One container event from the Engine's `/events` stream (SHP-T-20.2). Like the inventory, it takes
+ * only the container's ID and name from the event's attributes, never its labels or image's.
+ */
+export interface EngineContainerEvent {
+  kind: EngineEventKind;
+  /**
+   * The Engine's `timeNano`, exact, as decimal digits: a JSON number that large loses its last
+   * digits in a double, and a reconnect asks for events from exactly this time (SHP-REQ-218).
+   */
+  timeNano: string;
+  containerId: string;
+  /** Without Docker's leading slash. */
+  containerName: string;
+  /** The `exitCode` attribute of a `die`; null on every other kind. */
+  exitCode: number | null;
+  /** The suffix of a `health_status: <status>` action; null on every other kind. */
+  health: 'healthy' | 'unhealthy' | 'starting' | null;
+}
+
+export interface ContainerEventsOptions {
+  /**
+   * Events from this time on, inclusive, as the Engine's `since` takes it (`<seconds>.<nanoseconds>`);
+   * null for events from now on.
+   */
+  since: string | null;
+  /** Aborting ends the stream: the call resolves rather than rejects. */
+  signal: AbortSignal;
 }
 
 export interface HostVolumeRecord {
@@ -372,6 +436,17 @@ export interface DockerPort {
   containerStats?(id: string): Promise<HostStatsSample | null>;
   /** Total and free bytes on the Docker root, through the same read-only helper as `freeBytes`. */
   dockerRootSpace?(): Promise<DockerRootSpace>;
+  /** `GET /info`'s CPU count and total memory, or null when the Engine did not say (SHP-REQ-221). */
+  hostInfo?(): Promise<HostInfo | null>;
+
+  // Events (SHP-T-20.2, SHP-REQ-217..218): one read-only, long-lived `GET /events`, optional for
+  // the same reason; the agent reports no events when the configured port lacks it.
+  /**
+   * Streams the Engine's container start, die, oom, health_status and restart events to `onEvent`,
+   * in the Engine's order. Resolves when the Engine ends the stream or `signal` aborts; rejects when
+   * it cannot be opened or breaks. The caller reconnects.
+   */
+  containerEvents?(options: ContainerEventsOptions, onEvent: (event: EngineContainerEvent) => void): Promise<void>;
 
   // Logs (SHP-T-15.3): read-only, optional for the same reason; the agent refuses a log read when
   // the configured port lacks either, rather than sending lines it cannot redact.

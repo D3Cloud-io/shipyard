@@ -3,6 +3,7 @@ import { StringDecoder } from 'node:string_decoder';
 
 import Dockerode from 'dockerode';
 
+import { ENGINE_EVENT_KINDS } from '../ports.js';
 import type {
   BuildCacheRecord,
   BuildNetworkInfo,
@@ -11,9 +12,12 @@ import type {
   ContainerRedactionFacts,
   DockerPort,
   DockerRootSpace,
+  EngineContainerEvent,
   ExecResult,
   HealthResponse,
   HostContainerRecord,
+  HostHealthCheckRecord,
+  HostInfo,
   HostImageRecord,
   HostNetworkRecord,
   HostStatsSample,
@@ -387,6 +391,87 @@ function nonEmpty(value: string | undefined): string | null {
   return value === undefined || value === '' ? null : value;
 }
 
+/** Health-check results the inventory carries per container (SHP-REQ-220). */
+export const HEALTH_LOG_ENTRIES = 5;
+
+/** A probe's output as the Engine keeps it is already capped; this bounds what crosses the port. */
+const HEALTH_OUTPUT_MAX_CHARS = 64 * 1024;
+
+/**
+ * The last `HEALTH_LOG_ENTRIES` of `State.Health.Log`, oldest first, from an inspect's raw entries.
+ * An entry with no readable start is skipped; the output is carried unredacted for the agent.
+ */
+export function healthLogFromInspect(log: unknown): HostHealthCheckRecord[] {
+  if (!Array.isArray(log)) return [];
+  const out: HostHealthCheckRecord[] = [];
+  for (const entry of log as unknown[]) {
+    if (typeof entry !== 'object' || entry === null) continue;
+    const e = entry as { Start?: unknown; End?: unknown; ExitCode?: unknown; Output?: unknown };
+    const start = isoOrNull(e.Start);
+    if (start === null) continue;
+    out.push({
+      start,
+      end: isoOrNull(e.End),
+      exitCode: typeof e.ExitCode === 'number' && Number.isInteger(e.ExitCode) ? e.ExitCode : -1,
+      output: typeof e.Output === 'string' ? e.Output.slice(-HEALTH_OUTPUT_MAX_CHARS) : '',
+    });
+  }
+  return out.slice(-HEALTH_LOG_ENTRIES);
+}
+
+const EVENT_KINDS = new Set<string>(ENGINE_EVENT_KINDS);
+/** A line of the event stream longer than this is not an event the agent reads; it is skipped. */
+const MAX_EVENT_LINE_CHARS = 256 * 1024;
+
+/** `<seconds>.<nanoseconds>` for the Engine's `since`, from an exact `timeNano`. */
+export function engineSince(timeNano: string): string {
+  const ns = BigInt(timeNano);
+  const seconds = ns / 1_000_000_000n;
+  const rest = ns % 1_000_000_000n;
+  return `${seconds.toString()}.${rest.toString().padStart(9, '0')}`;
+}
+
+/**
+ * One line of `/events` as the port's event, or null for anything else: another type, another
+ * action, or a line that does not parse. `timeNano` is cut from the raw text, since `JSON.parse`
+ * rounds a number that large; `time` (seconds) stands in when the Engine sent no `timeNano`.
+ * Only the actor's ID and its `name` and `exitCode` attributes are read: the rest of the
+ * attributes are the container's labels (SHP-REQ-177).
+ */
+export function parseEngineEvent(line: string): EngineContainerEvent | null {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(line) as unknown;
+  } catch {
+    return null;
+  }
+  if (typeof raw !== 'object' || raw === null) return null;
+  const ev = raw as { Type?: unknown; Action?: unknown; status?: unknown; id?: unknown; time?: unknown; Actor?: { ID?: unknown; Attributes?: Record<string, unknown> | null } | null };
+  if (ev.Type !== undefined && ev.Type !== 'container') return null;
+  const action = typeof ev.Action === 'string' ? ev.Action : typeof ev.status === 'string' ? ev.status : '';
+  const colon = action.indexOf(':');
+  const kind = (colon === -1 ? action : action.slice(0, colon)).trim();
+  if (!EVENT_KINDS.has(kind)) return null;
+
+  const nano = /"timeNano"\s*:\s*(\d+)/.exec(line)?.[1];
+  const timeNano = nano ?? (typeof ev.time === 'number' && Number.isInteger(ev.time) && ev.time > 0 ? `${String(ev.time)}000000000` : undefined);
+  if (timeNano === undefined) return null;
+
+  const id = typeof ev.Actor?.ID === 'string' ? ev.Actor.ID : typeof ev.id === 'string' ? ev.id : '';
+  if (id === '') return null;
+  const attrs = ev.Actor?.Attributes ?? {};
+  const name = typeof attrs.name === 'string' && attrs.name !== '' ? attrs.name.replace(/^\//, '') : id.slice(0, 12);
+
+  let exitCode: number | null = null;
+  if (kind === 'die' && typeof attrs.exitCode === 'string' && /^-?\d+$/.test(attrs.exitCode)) exitCode = Number(attrs.exitCode);
+  let health: EngineContainerEvent['health'] = null;
+  if (kind === 'health_status') {
+    const status = colon === -1 ? '' : action.slice(colon + 1).trim();
+    health = status === 'healthy' || status === 'unhealthy' || status === 'starting' ? status : null;
+  }
+  return { kind: kind as EngineContainerEvent['kind'], timeNano, containerId: id, containerName: name, exitCode, health };
+}
+
 /** Runs `fn` over `items` with at most `limit` in flight; results keep the input order. */
 async function mapLimit<T, R>(items: readonly T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
   const results = new Array<R>(items.length);
@@ -436,6 +521,7 @@ export function createDockerAdapter(
   Required<
     Pick<DockerPort, 'loadImage' | 'inspectNetwork' | 'hostContainers' | 'hostVolumes' | 'systemDf' | 'hostImages' | 'hostNetworks' | 'containerStats' | 'dockerRootSpace'>
   > &
+  Required<Pick<DockerPort, 'hostInfo' | 'containerEvents'>> &
   Required<Pick<DockerPort, 'containerLogs' | 'inspectEnv' | 'pullImage'>> &
   Required<Pick<DockerPort, 'dockerCli' | 'containerIdentity' | 'buildCacheRecords' | 'pruneBuildCacheRecord'>> {
   const docker = options.docker ?? dockerodeFor(options.dockerHost);
@@ -763,11 +849,22 @@ export function createDockerAdapter(
         let restartCount = 0;
         let startedAt: string | null = null;
         let health = healthFromStatus(c.Status);
+        // From the same inspect (SHP-T-20.2); absent when it fails, never guessed.
+        let exitState: Pick<HostContainerRecord, 'exitCode' | 'oomKilled' | 'restartPolicy'> = {};
+        let rawHealthLog: unknown;
         try {
           const info = await withTimeout(docker.getContainer(c.Id).inspect(), hostCallTimeoutMs, `inspect ${c.Id.slice(0, 12)}`);
           restartCount = typeof info.RestartCount === 'number' ? info.RestartCount : 0;
           startedAt = isoOrNull(info.State.StartedAt);
           health = healthFromInspect(info.State.Health?.Status) ?? health;
+          const state = info.State as { ExitCode?: unknown; OOMKilled?: unknown; Health?: { Log?: unknown } | null };
+          const policy = (info.HostConfig as { RestartPolicy?: { Name?: unknown } | null } | undefined)?.RestartPolicy?.Name;
+          exitState = {
+            exitCode: typeof state.ExitCode === 'number' && Number.isInteger(state.ExitCode) ? state.ExitCode : 0,
+            oomKilled: state.OOMKilled === true,
+            restartPolicy: typeof policy === 'string' ? policy : '',
+          };
+          rawHealthLog = state.Health?.Log;
         } catch (err) {
           // Removed since the list: it is no longer a container. Anything else degrades this one.
           if (statusCodeOf(err) === 404) return null;
@@ -809,6 +906,9 @@ export function createDockerAdapter(
             readOnly: !m.RW,
           })),
           networkIds: Object.values(c.NetworkSettings?.Networks ?? {}).flatMap((n) => (n.NetworkID === undefined || n.NetworkID === '' ? [] : [n.NetworkID])),
+          ...exitState,
+          // Only while it is unhealthy or starting does a probe's output cross the port at all.
+          healthLog: health === 'unhealthy' || health === 'starting' ? healthLogFromInspect(rawHealthLog) : [],
         };
       });
       return records.filter((r): r is HostContainerRecord => r !== null);
@@ -898,6 +998,69 @@ export function createDockerAdapter(
       const { root, output } = await dfDockerRoot();
       const space = parseDfSpace(output);
       return { path: root, totalBytes: space.totalBytes, freeBytes: space.availableBytes };
+    },
+
+    async hostInfo(): Promise<HostInfo | null> {
+      const info = (await withTimeout(docker.info() as Promise<unknown>, hostCallTimeoutMs, 'info')) as { NCPU?: unknown; MemTotal?: unknown } | null;
+      const cpus = info?.NCPU;
+      const memory = info?.MemTotal;
+      if (typeof cpus !== 'number' || !Number.isInteger(cpus) || cpus < 1) return null;
+      if (typeof memory !== 'number' || !Number.isInteger(memory) || memory < 0) return null;
+      return { cpuCores: cpus, memoryBytes: memory };
+    },
+
+    // ─── Events (SHP-T-20.2, SHP-REQ-217): one read-only `GET /events`, container events only ───
+
+    async containerEvents(opts, onEvent): Promise<void> {
+      // A function, not the property: the signal flips while the stream is read.
+      const aborted = (): boolean => opts.signal.aborted;
+      if (aborted()) return;
+      const query = {
+        filters: JSON.stringify({ type: ['container'], event: [...ENGINE_EVENT_KINDS] }),
+        ...(opts.since === null ? {} : { since: opts.since }),
+        abortSignal: opts.signal,
+      };
+      let stream: NodeJS.ReadableStream;
+      try {
+        // `since` goes as `<s>.<ns>` text, which the Engine takes and dockerode's types do not name.
+        stream = await docker.getEvents(query as unknown as Dockerode.GetEventsOptions);
+      } catch (err) {
+        if (aborted()) return;
+        throw err;
+      }
+      const destroy = (): void => {
+        (stream as { destroy?: () => void }).destroy?.();
+      };
+      opts.signal.addEventListener('abort', destroy, { once: true });
+      if (aborted()) destroy();
+      const decoder = new StringDecoder('utf8');
+      let pending = '';
+      const take = (text: string): void => {
+        pending += text;
+        let nl = pending.indexOf('\n');
+        while (nl !== -1) {
+          const line = pending.slice(0, nl).trim();
+          pending = pending.slice(nl + 1);
+          if (line.length > 0) {
+            const event = parseEngineEvent(line);
+            if (event !== null) onEvent(event);
+          }
+          nl = pending.indexOf('\n');
+        }
+        if (pending.length > MAX_EVENT_LINE_CHARS) pending = '';
+      };
+      try {
+        for await (const chunk of stream) {
+          take(typeof chunk === 'string' ? chunk : decoder.write(chunk));
+        }
+        take(`${decoder.end()}\n`);
+      } catch (err) {
+        // Destroying the stream on abort ends the iteration with a premature-close error.
+        if (!aborted()) throw err;
+      } finally {
+        opts.signal.removeEventListener('abort', destroy);
+        destroy();
+      }
     },
 
     // ─── Logs (SHP-T-15.3, SHP-ADR-011): read-only, like everything dockerode does here ─────────

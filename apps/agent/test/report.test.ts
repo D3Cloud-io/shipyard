@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AgentReport } from '@shipyard/schema';
 import { Ledger, type ComposeTarget, type DockerPort, type FsPort, type LedgerEntry, type RunningContainer } from '@shipyard/sequence';
 import type { AgentClient } from '../src/client.js';
+import { createEventCollector } from '../src/events.js';
 import { buildReport, manifestsHash, reportHash, startReporting } from '../src/report.js';
 
 const ROOT = '/data/shipyard';
@@ -396,5 +397,62 @@ describe('startReporting', () => {
     await vi.advanceTimersByTimeAsync(1_000);
     expect(calls).toBe(2);
     reporting.stop();
+  });
+
+  it('carries the Engine events and lets them go only once the server accepts that report (SHP-T-20.2, SHP-REQ-219)', async () => {
+    vi.useFakeTimers();
+    const files = new Map([[`${ROOT}/apps/web.yml`, manifestYaml('web')]]);
+    const id = 'e'.repeat(64);
+    const docker: DockerPort = {
+      ...fakeDocker({}),
+      containerEvents: (opts, onEvent) => {
+        for (const [n, kind] of (['die', 'start', 'restart'] as const).entries()) {
+          onEvent({ kind, timeNano: `179000000000${String(n)}000000`, containerId: id, containerName: 'toy-web-1', exitCode: kind === 'die' ? 0 : null, health: null });
+        }
+        return new Promise((resolve) => {
+          opts.signal.addEventListener('abort', () => {
+            resolve();
+          });
+        });
+      },
+    };
+    const events = createEventCollector({ docker, log: { info: vi.fn(), warn: vi.fn() } });
+    const stop = new AbortController();
+    void events.run(stop.signal);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(events.size()).toBe(3);
+
+    let fail = true;
+    const sent: AgentReport[] = [];
+    const client: AgentClient = {
+      request: (_m, _p, body) => {
+        sent.push(body as AgentReport);
+        return fail ? Promise.reject(new Error('HTTP 503')) : Promise.resolve({});
+      },
+    };
+    const ports = { fs: fakeFs(files), docker, engineApiVersion: () => Promise.resolve('1.51'), events };
+    const reporting = startReporting(client, () => buildReport(ports, ROOT, { agentVersion: '0', patExpiresAt: null }), {
+      intervalMs: 60_000,
+      accepted: (report) => {
+        events.accepted(report);
+      },
+      log: { info: vi.fn(), warn: vi.fn() },
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(sent).toHaveLength(1);
+    expect(AgentReport.parse(sent[0])).toEqual(sent[0]);
+    expect(sent[0]?.events?.map((e) => e.kind)).toEqual(['die', 'start', 'restart']);
+    expect(sent[0]?.droppedEvents).toBe(0);
+    // The report failed: nothing is lost.
+    expect(events.size()).toBe(3);
+
+    fail = false;
+    await reporting.sendNow();
+    expect(sent[1]?.events).toHaveLength(3);
+    expect(events.size()).toBe(0);
+    await reporting.sendNow();
+    expect(sent[2]?.events).toEqual([]);
+    reporting.stop();
+    stop.abort();
   });
 });
