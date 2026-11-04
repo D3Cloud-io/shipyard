@@ -1,0 +1,104 @@
+{
+  "builtAt": "2026-11-02T22:10:00.000Z",
+  "container": {
+    "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "name": "postroom-imap-1",
+    "tier": "shipped",
+    "owner": "postroom",
+    "compose": {
+      "project": "postroom",
+      "service": "imap"
+    }
+  },
+  "condition": "restarting",
+  "failingSince": "2026-11-02T22:10:00.000Z",
+  "facts": [
+    {
+      "kind": "log-error",
+      "at": "2026-11-02T22:10:00.000Z",
+      "text": "First error: dial tcp 10.0.0.5:993: connect: connection refused"
+    }
+  ],
+  "inspect": {
+    "image": "ghcr.io/d3cloud-io/postroom/imap:sha-0b6ea3d5db13b77d3d3f2dd2042afce42751aff8",
+    "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "state": "restarting",
+    "health": "none",
+    "restartCount": 14,
+    "createdAt": "2026-11-02T22:10:00.000Z",
+    "startedAt": "2026-11-02T22:10:00.000Z",
+    "memoryBytes": 1024,
+    "memoryLimitBytes": null,
+    "cpuPercent": 0.0,
+    "exitCode": 137,
+    "oomKilled": true,
+    "restartPolicy": "always"
+  },
+  "logs": {
+    "from": "first-error",
+    "lines": [
+      {
+        "at": "2026-11-02T22:10:00.000Z",
+        "stream": "stderr",
+        "text": "connect: connection refused"
+      }
+    ],
+    "unavailable": null
+  },
+  "lastChange": {
+    "kind": "deploy",
+    "id": "01a19f9e-03d6-7178-a0db-db2a30fd2eb8",
+    "at": "2026-11-02T22:10:00.000Z",
+    "state": "succeeded",
+    "sha": "0b6ea3d5db13b77d3d3f2dd2042afce42751aff8",
+    "digest": null
+  },
+  "events": [
+    {
+      "kind": "die",
+      "at": "2026-11-04T10:01:00.000Z",
+      "containerId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "containerName": "bindery-worker-1",
+      "exitCode": 137,
+      "health": null
+    }
+  ],
+  "probes": [
+    {
+      "start": "2026-11-04T10:00:00.000Z",
+      "end": "2026-11-04T10:00:01.200Z",
+      "exitCode": 1,
+      "output": "curl: (7) Failed to connect to localhost port 8080"
+    },
+    {
+      "start": "2026-11-04T10:00:00.000Z",
+      "end": "2026-11-04T10:00:01.200Z",
+      "exitCode": 1,
+      "output": "curl: (7) Failed to connect to localhost port 8080"
+    },
+    {
+      "start": "2026-11-04T10:00:00.000Z",
+      "end": "2026-11-04T10:00:01.200Z",
+      "exitCode": 1,
+      "output": "curl: (7) Failed to connect to localhost port 8080"
+    },
+    {
+      "start": "2026-11-04T10:00:00.000Z",
+      "end": "2026-11-04T10:00:01.200Z",
+      "exitCode": 1,
+      "output": "curl: (7) Failed to connect to localhost port 8080"
+    },
+    {
+      "start": "2026-11-04T10:00:00.000Z",
+      "end": "2026-11-04T10:00:01.200Z",
+      "exitCode": 1,
+      "output": "curl: (7) Failed to connect to localhost port 8080"
+    },
+    {
+      "start": "2026-11-04T10:00:00.000Z",
+      "end": "2026-11-04T10:00:01.200Z",
+      "exitCode": 1,
+      "output": "curl: (7) Failed to connect to localhost port 8080"
+    }
+  ]
+}

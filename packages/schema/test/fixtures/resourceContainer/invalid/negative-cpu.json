@@ -1,0 +1,10 @@
+{
+  "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "name": "penpot-frontend",
+  "tier": "observed",
+  "app": null,
+  "cpuPercent": -1,
+  "memoryBytes": 900000000,
+  "memoryLimitBytes": 1073741824,
+  "limitFraction": 0.838
+}

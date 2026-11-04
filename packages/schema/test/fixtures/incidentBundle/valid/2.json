@@ -26,7 +26,10 @@
     "startedAt": "2026-11-02T22:10:00.000Z",
     "memoryBytes": 1024,
     "memoryLimitBytes": null,
-    "cpuPercent": 0.0
+    "cpuPercent": 0.0,
+    "exitCode": 137,
+    "oomKilled": true,
+    "restartPolicy": "always"
   },
   "logs": {
     "from": "first-error",
@@ -39,5 +42,23 @@
     ],
     "unavailable": null
   },
-  "lastChange": null
+  "lastChange": null,
+  "events": [
+    {
+      "kind": "die",
+      "at": "2026-11-04T10:01:00.000Z",
+      "containerId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "containerName": "bindery-worker-1",
+      "exitCode": 137,
+      "health": null
+    }
+  ],
+  "probes": [
+    {
+      "start": "2026-11-04T10:00:00.000Z",
+      "end": "2026-11-04T10:00:01.200Z",
+      "exitCode": 1,
+      "output": "curl: (7) Failed to connect to localhost port 8080"
+    }
+  ]
 }

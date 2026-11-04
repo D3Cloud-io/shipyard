@@ -178,7 +178,13 @@ export async function buildIncidentBundle(
       memoryBytes: container.stats?.memoryBytes ?? null,
       memoryLimitBytes: container.stats?.memoryLimitBytes ?? null,
       cpuPercent: container.stats?.cpuPercent ?? null,
+      exitCode: container.exitCode ?? null,
+      oomKilled: container.oomKilled ?? null,
+      restartPolicy: container.restartPolicy ?? null,
     },
+    // SHP-T-20.3 fills events from container_event; probes come from the latest report only.
+    events: [],
+    probes: container.healthLog ?? [],
     logs,
     lastChange,
   });

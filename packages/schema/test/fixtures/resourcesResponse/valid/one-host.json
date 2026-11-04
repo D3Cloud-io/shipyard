@@ -1,0 +1,65 @@
+{
+  "hosts": [
+    {
+      "agent": {
+        "id": "0b8f1c2e-3d4a-4b5c-8d6e-7f8091a2b3c4"
+      },
+      "sampledAt": "2026-11-04T10:05:00.000Z",
+      "cpuCores": 8,
+      "memoryBytes": 33554432000,
+      "used": {
+        "cpuPercent": 310.2,
+        "memoryBytes": 21000000000
+      },
+      "heaviestByCpu": [
+        {
+          "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "name": "prometheus",
+          "tier": "observed",
+          "app": null,
+          "cpuPercent": 120.0,
+          "memoryBytes": 900000000,
+          "memoryLimitBytes": 1073741824,
+          "limitFraction": 0.838
+        }
+      ],
+      "heaviestByMemory": [
+        {
+          "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "name": "penpot-frontend",
+          "tier": "observed",
+          "app": null,
+          "cpuPercent": 12.5,
+          "memoryBytes": 900000000,
+          "memoryLimitBytes": 1073741824,
+          "limitFraction": 0.838
+        }
+      ],
+      "nearLimit": [
+        {
+          "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "name": "penpot-frontend",
+          "tier": "observed",
+          "app": null,
+          "cpuPercent": 12.5,
+          "memoryBytes": 900000000,
+          "memoryLimitBytes": 1073741824,
+          "limitFraction": 0.838
+        }
+      ],
+      "spikes": [
+        {
+          "containerName": "prometheus",
+          "tier": "observed",
+          "app": null,
+          "from": "2026-11-04T09:00:00.000Z",
+          "to": "2026-11-04T09:02:00.000Z",
+          "samples": 3,
+          "peakCpuPercent": 180.0,
+          "medianCpuPercent": 4.1,
+          "ongoing": false
+        }
+      ]
+    }
+  ]
+}
