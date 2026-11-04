@@ -11,6 +11,7 @@ import type {
   HostVolumeRecord,
 } from '@shipyard/sequence';
 import {
+  dropPartialSecret,
   DF_TTL_MS,
   DOCKER_ROOT_TTL_MS,
   FAILURE_RETRY_MS,
@@ -590,5 +591,20 @@ describe('exit state, health checks and host totals (SHP-T-20.2)', () => {
     const inv = await collect([]);
     expect(inv?.containers.find((c) => c.name === 'toy-web-1')?.healthLog).toEqual([]);
     expect(inv?.containers.find((c) => c.name === 'sick')?.healthLog?.map((r) => r.output)).toEqual(['out 2', 'out 3', 'out 4', 'out 5', 'out 6']);
+  });
+});
+
+describe('dropPartialSecret (SHP-REQ-220)', () => {
+  it('drops a tail that is the start of a secret Docker cut through', () => {
+    expect(dropPartialSecret('connect failed: token=hunter2-s3', ['hunter2-s3cr3t-value'])).toBe('connect failed: token=');
+  });
+
+  it('keeps the text when its end begins no secret, and ignores one-character overlaps', () => {
+    expect(dropPartialSecret('connect failed: timeout', ['hunter2-s3cr3t-value'])).toBe('connect failed: timeout');
+    expect(dropPartialSecret('path ends in h', ['hunter2-s3cr3t-value'])).toBe('path ends in h');
+  });
+
+  it('drops the longest such tail when several secrets could start there', () => {
+    expect(dropPartialSecret('key=abcd', ['cdXY', 'abcdEFGH'])).toBe('key=');
   });
 });

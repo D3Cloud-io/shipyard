@@ -61,6 +61,27 @@ const STATS_CONCURRENCY = 8;
 /** `HealthCheckResult.output` is capped at 4 KiB, cut after redaction. */
 export const HEALTH_OUTPUT_MAX_CHARS = 4096;
 
+/** Docker keeps at most this many bytes of a probe's output (`MaxOutputLen`), cutting where it likes. */
+export const DOCKER_PROBE_OUTPUT_MAX_BYTES = 4096;
+
+/**
+ * Output Docker cut at its limit may end part-way into a secret, which the redactor cannot match
+ * whole. Drops the longest tail that is the start of any redaction value, so no prefix of a secret
+ * is sent (the same guarantee `safeCut` gives logs).
+ */
+export function dropPartialSecret(text: string, values: readonly string[]): string {
+  let drop = 0;
+  for (const value of values) {
+    for (let k = Math.min(value.length - 1, text.length); k > drop && k >= 2; k--) {
+      if (text.endsWith(value.slice(0, k))) {
+        drop = k;
+        break;
+      }
+    }
+  }
+  return drop === 0 ? text : text.slice(0, text.length - drop);
+}
+
 // ─── Tier ────────────────────────────────────────────────────────────────────
 
 export interface Tier {
@@ -250,6 +271,7 @@ export function createInventoryCollector(
       const raw = c.healthLog ?? [];
       if (raw.length === 0 || (c.health !== 'unhealthy' && c.health !== 'starting')) continue;
       let redact: ((text: string) => string) | null = null;
+      let values: readonly string[] = [];
       try {
         const facts = await docker.inspectEnv?.(c.id);
         if (facts !== undefined && facts !== null) {
@@ -268,7 +290,8 @@ export function createInventoryCollector(
             }
             secrets = await loading;
           }
-          redact = createRedactor(redactionValues(secrets, facts.envValues));
+          values = redactionValues(secrets, facts.envValues);
+          redact = createRedactor(values);
         }
       } catch (err) {
         // Never the output, never the error's text about a value: only that it could not be redacted.
@@ -282,7 +305,10 @@ export function createInventoryCollector(
           start: r.start,
           end: r.end,
           exitCode: r.exitCode,
-          output: apply === null ? '' : apply(r.output).slice(0, HEALTH_OUTPUT_MAX_CHARS),
+          output:
+            apply === null
+              ? ''
+              : apply(Buffer.byteLength(r.output) >= DOCKER_PROBE_OUTPUT_MAX_BYTES ? dropPartialSecret(r.output, values) : r.output).slice(0, HEALTH_OUTPUT_MAX_CHARS),
         })),
       );
     }
