@@ -113,3 +113,5 @@ bundle as JSON.
 
 Check what you paste before you share it outside your own sessions. Redaction removes what
 Shipyard recognises as a secret; it cannot know every value an application chooses to log.
+
+What the agent reports about the host, and what the server keeps, is in `host.md`.
